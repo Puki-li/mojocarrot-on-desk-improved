@@ -1,6 +1,11 @@
 const { app, BrowserWindow, screen, Menu, ipcMain, globalShortcut } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const {
+  DEFAULT_OBJECT_FRAME,
+  getObjRect: projectObjRect,
+  getHitRectScreen: projectHitRectScreen,
+} = require("./geometry");
 
 const isMac = process.platform === "darwin";
 const isLinux = process.platform === "linux";
@@ -66,18 +71,10 @@ function savePrefs() {
 let _codexMonitor = null;          // Codex CLI JSONL log polling instance
 
 // ── CSS <object> sizing (mirrors styles.css #clawd) ──
-const OBJ_SCALE_W = 1.9;   // width: 190%
-const OBJ_SCALE_H = 1.3;   // height: 130%
-const OBJ_OFF_X   = -0.45; // left: -45%
-const OBJ_OFF_Y   = -0.25; // top: -25%
+const OBJ_FRAME = DEFAULT_OBJECT_FRAME;
 
 function getObjRect(bounds) {
-  return {
-    x: bounds.x + bounds.width * OBJ_OFF_X,
-    y: bounds.y + bounds.height * OBJ_OFF_Y,
-    w: bounds.width * OBJ_SCALE_W,
-    h: bounds.height * OBJ_SCALE_H,
-  };
+  return projectObjRect(bounds, OBJ_FRAME);
 }
 
 let win;
@@ -263,17 +260,7 @@ const STATE_PRIORITY = _state.STATE_PRIORITY;
 
 // ── Hit-test: SVG bounding box → screen coordinates ──
 function getHitRectScreen(bounds) {
-  const obj = getObjRect(bounds);
-  const scale = Math.min(obj.w, obj.h) / 45;
-  const offsetX = obj.x + (obj.w - 45 * scale) / 2;
-  const offsetY = obj.y + (obj.h - 45 * scale) / 2;
-  const hb = _state.getCurrentHitBox();
-  return {
-    left:   offsetX + (hb.x + 15) * scale,
-    top:    offsetY + (hb.y + 25) * scale,
-    right:  offsetX + (hb.x + 15 + hb.w) * scale,
-    bottom: offsetY + (hb.y + 25 + hb.h) * scale,
-  };
+  return projectHitRectScreen(bounds, _state.getCurrentHitBox(), OBJ_FRAME);
 }
 
 // ── Main tick — delegated to src/tick.js ──
@@ -617,7 +604,8 @@ function createWindow() {
     // Send initial state to hitWin once it's ready
     hitWin.webContents.on("did-finish-load", () => {
       sendToHitWin("hit-state-sync", {
-        currentSvg: _state.getCurrentSvg(), miniMode: _mini.getMiniMode(), dndEnabled: doNotDisturb,
+        currentSvg: _state.getCurrentSvg(), currentHitBox: _state.getCurrentHitBox(),
+        miniMode: _mini.getMiniMode(), dndEnabled: doNotDisturb,
       });
     });
 

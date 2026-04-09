@@ -3,14 +3,17 @@
 // Render window is pure "view" — receives reaction commands via IPC relay.
 
 const area = document.getElementById("hit-area");
+const { getFaceReactionDirection } = window.ClawdHitReactionLogic;
 
 // --- State synced from main ---
 let currentSvg = null;
+let currentHitBox = null;
 let miniMode = false;
 let dndEnabled = false;
 
 window.hitAPI.onStateSync((data) => {
   if (data.currentSvg !== undefined) currentSvg = data.currentSvg;
+  if (data.currentHitBox !== undefined) currentHitBox = data.currentHitBox;
   if (data.miniMode !== undefined) {
     miniMode = data.miniMode;
     area.style.cursor = miniMode ? "default" : "";
@@ -107,7 +110,7 @@ document.addEventListener("pointerup", (e) => {
       if (e.ctrlKey || e.metaKey) {
         window.hitAPI.showSessionMenu();
       } else {
-        handleClick(e.clientX);
+        handleClick(e.clientX, e.clientY);
       }
     }
   }
@@ -122,16 +125,25 @@ const CLICK_WINDOW_MS = 400;
 const REACT_LEFT_SVG = "clawd-react-left.svg";
 const REACT_RIGHT_SVG = "clawd-react-right.svg";
 const REACT_ANNOYED_SVG = "clawd-react-annoyed.svg";
-const REACT_DOUBLE_SVGS = ["clawd-react-double.svg", "clawd-react-double-jump.svg"];
+const REACT_DOUBLE_SVGS = ["clawd-react-double.svg", "clawd-react-double-jump.svg", "clawd-react-wizard.svg"];
 const REACT_SINGLE_DURATION = 2500;
 const REACT_ANNOYED_DURATION = 3500;
-const REACT_DOUBLE_DURATION = 3500;
+const REACT_DOUBLE_DURATION = 6000;
 
 let clickCount = 0;
 let clickTimer = null;
 let firstClickDir = null;
 
-function handleClick(clientX) {
+function resetClickSequence() {
+  if (clickTimer) {
+    clearTimeout(clickTimer);
+    clickTimer = null;
+  }
+  clickCount = 0;
+  firstClickDir = null;
+}
+
+function handleClick(clientX, clientY) {
   if (miniMode) {
     window.hitAPI.exitMiniMode();
     return;
@@ -144,9 +156,23 @@ function handleClick(clientX) {
     return;
   }
 
+  const clickDir = getFaceReactionDirection(
+    clientX,
+    clientY,
+    area.offsetWidth,
+    area.offsetHeight,
+    currentHitBox
+  );
+
+  if (!clickDir) {
+    resetClickSequence();
+    window.hitAPI.focusTerminal();
+    return;
+  }
+
   clickCount++;
   if (clickCount === 1) {
-    firstClickDir = clientX < area.offsetWidth / 2 ? "left" : "right";
+    firstClickDir = clickDir;
     window.hitAPI.focusTerminal();
   }
 

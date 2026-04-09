@@ -100,6 +100,7 @@ function playReaction(svgFile, durationMs) {
     pendingNext = null;
     clawdEl = next;
     currentDisplayedSvg = svgFile;
+    reactTimer = setTimeout(() => endReaction(), durationMs);
   };
 
   next.addEventListener("load", swap, { once: true });
@@ -112,8 +113,6 @@ function playReaction(svgFile, durationMs) {
     try { if (!next.contentDocument) { next.remove(); pendingNext = null; return; } } catch {}
     swap();
   }, 3000);
-
-  reactTimer = setTimeout(() => endReaction(), durationMs);
 }
 
 function endReaction() {
@@ -247,7 +246,9 @@ window.electronAPI.onStateChange((state, svg) => {
 });
 
 // --- Eye tracking (idle state only) ---
+let faceTarget = null;
 let eyeTarget = null;
+let mouthTarget = null;
 let bodyTarget = null;
 let shadowTarget = null;
 let lastEyeDx = 0;
@@ -255,8 +256,13 @@ let lastEyeDy = 0;
 let eyeAttachToken = 0;
 
 function applyEyeMove(dx, dy) {
-  if (eyeTarget) {
+  if (faceTarget) {
+    faceTarget.style.transform = `translate(${dx}px, ${dy}px)`;
+  } else if (eyeTarget) {
     eyeTarget.style.transform = `translate(${dx}px, ${dy}px)`;
+    if (mouthTarget) {
+      mouthTarget.style.transform = `translate(${dx}px, ${dy}px)`;
+    }
   }
   if (bodyTarget || shadowTarget) {
     const bdx = Math.round(dx * 0.33 * 2) / 2;
@@ -274,7 +280,9 @@ function applyEyeMove(dx, dy) {
 
 function attachEyeTracking(objectEl) {
   const token = ++eyeAttachToken;
+  faceTarget = null;
   eyeTarget = null;
+  mouthTarget = null;
   bodyTarget = null;
   shadowTarget = null;
 
@@ -286,7 +294,9 @@ function attachEyeTracking(objectEl) {
       const svgDoc = objectEl.contentDocument;
       const eyes = svgDoc && svgDoc.getElementById("eyes-js");
       if (eyes) {
+        faceTarget = svgDoc.getElementById("face-js");
         eyeTarget = eyes;
+        mouthTarget = svgDoc.getElementById("mouth-js");
         bodyTarget = svgDoc.getElementById("body-js");
         shadowTarget = svgDoc.getElementById("shadow-js");
         applyEyeMove(lastEyeDx, lastEyeDy);
@@ -310,7 +320,9 @@ function attachEyeTracking(objectEl) {
 
 function detachEyeTracking() {
   eyeAttachToken++;
+  faceTarget = null;
   eyeTarget = null;
+  mouthTarget = null;
   bodyTarget = null;
   shadowTarget = null;
 }
@@ -320,8 +332,11 @@ window.electronAPI.onEyeMove((dx, dy) => {
   lastEyeDx = effectiveDx;
   lastEyeDy = dy;
   // Detect stale eye targets (e.g. after DWM z-order recovery invalidates contentDocument)
-  if (eyeTarget && !eyeTarget.ownerDocument?.defaultView) {
+  const staleTarget = faceTarget || eyeTarget;
+  if (staleTarget && !staleTarget.ownerDocument?.defaultView) {
+    faceTarget = null;
     eyeTarget = null;
+    mouthTarget = null;
     bodyTarget = null;
     shadowTarget = null;
     if (clawdEl && clawdEl.isConnected) attachEyeTracking(clawdEl);
@@ -339,4 +354,3 @@ window.electronAPI.onWakeFromDoze(() => {
     } catch (e) {}
   }
 });
-

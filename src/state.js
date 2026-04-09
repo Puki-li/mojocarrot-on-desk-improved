@@ -94,9 +94,10 @@ const STARTUP_RECOVERY_MAX_MS = 300000;
 
 // ── Hit-test bounding boxes ──
 const HIT_BOXES = {
-  default:  { x: -1, y: 5, w: 17, h: 12 },
-  sleeping: { x: -2, y: 9, w: 19, h: 7 },
-  wide:     { x: -3, y: 3, w: 21, h: 14 },
+  // Shift the box higher so drag/click coverage reaches Mojocarrot's upper face and leaf crown.
+  default:  { x: -2, y: -16, w: 19, h: 31 },
+  sleeping: { x: -1, y: 9, w: 17, h: 6 },
+  wide:     { x: -3, y: -16, w: 21, h: 31 },
 };
 const WIDE_SVGS = new Set(["clawd-error.svg", "clawd-notification.svg", "clawd-working-conducting.svg"]);
 let currentHitBox = HIT_BOXES.default;
@@ -218,7 +219,7 @@ function applyState(state, svgOverride) {
 
   ctx.sendToRenderer("state-change", state, svg);
   ctx.syncHitWin();
-  ctx.sendToHitWin("hit-state-sync", { currentSvg: svg });
+  ctx.sendToHitWin("hit-state-sync", { currentSvg: svg, currentHitBox });
   ctx.sendToHitWin("hit-cancel-reaction");
 
   if (state !== "idle" && state !== "mini-idle") {
