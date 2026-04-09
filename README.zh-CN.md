@@ -104,17 +104,16 @@
 ```bash
 # 克隆仓库
 git clone https://github.com/lukelei2025/mojocarrot-on-desk.git
-cd clawd-on-desk
+cd mojocarrot-on-desk
 
 # 安装依赖
 npm install
 
-# 注册 Claude Code hooks（仅在确认版本兼容时注册 versioned hooks；版本未知时自动回退到核心 hooks 并清理旧的不兼容条目）
-node hooks/install.js
-
 # 启动 Mojocarrot on Desk
 npm start
 ```
+
+现在这个仓库已经可以按一个独立的 Mojocarrot 项目直接安装和运行，不需要先安装上游 `clawd-on-desk` 再覆盖资源。
 
 ### 远程 SSH 模式（Claude Code & Codex CLI）
 
@@ -154,7 +153,7 @@ Host my-server
 - **源码运行**（`npm start`）：Intel 和 Apple Silicon 均可直接使用。
 - **DMG 安装包**：未签名 Apple 开发者证书，macOS Gatekeeper 会拦截。解决方法：
   - 右键点击应用 → **打开** → 在弹窗中点击 **打开**，或
-  - 在终端运行 `xattr -cr /Applications/Clawd\ on\ Desk.app`
+  - 在终端运行 `xattr -cr /Applications/Mojocarrot\ on\ Desk.app`
 
 ### Linux 说明
 
@@ -174,41 +173,9 @@ Host my-server
 | **macOS/Linux 自动更新** | macOS 无 Apple 代码签名，Linux 不支持自动更新，均需从 GitHub Releases 手动下载。 |
 | **Electron 主进程无自动化测试** | 单元测试覆盖了 agent 配置和日志轮询，但状态机、窗口管理、托盘等 Electron 逻辑暂无自动化测试。 |
 
-### 未来计划
-
-一些我们想探索的方向：
-
-- Codex 终端聚焦（通过 `codex.exe` PID 反查进程树）
-- Copilot CLI hooks 自动注册（像 Claude Code 那样开箱即用）
-- 状态切换音效（目前被 Electron autoplay policy 阻塞）
-- 更多角色皮肤 / 动画包
-- Hook 卸载脚本（干净移除应用）
-
-## 参与贡献
-
-Mojocarrot on Desk 是基于公开仓库 [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk) 衍生出的公开分支。原项目的概念、主体实现和社区积累属于原仓库及其贡献者，这个分支重点负责 Mojocarrot 角色主题、动画重编排和 WMLS 向展示。欢迎提 Bug、提需求、提 PR —— 在 [Issues](https://github.com/lukelei2025/mojocarrot-on-desk/issues) 里聊或直接提交 PR。
-
-### 贡献者
-
-感谢每一位让这个项目变得更好的贡献者：
-
-<a href="https://github.com/PixelCookie-zyf"><img src="https://github.com/PixelCookie-zyf.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/yujiachen-y"><img src="https://github.com/yujiachen-y.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/AooooooZzzz"><img src="https://github.com/AooooooZzzz.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/purefkh"><img src="https://github.com/purefkh.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Tobeabellwether"><img src="https://github.com/Tobeabellwether.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Jasonhonghh"><img src="https://github.com/Jasonhonghh.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/crashchen"><img src="https://github.com/crashchen.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/hongbigtou"><img src="https://github.com/hongbigtou.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/InTimmyDate"><img src="https://github.com/InTimmyDate.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/NeizhiTouhu"><img src="https://github.com/NeizhiTouhu.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/xu3stones-cmd"><img src="https://github.com/xu3stones-cmd.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Ye-0413"><img src="https://github.com/Ye-0413.png" width="50" style="border-radius:50%" /></a>
-
 ## 致谢
 
-- 原始 Clawd 像素画参考自 [clawd-tank](https://github.com/marciogranzotto/clawd-tank) by [@marciogranzotto](https://github.com/marciogranzotto)
-- 原始 Clawd 角色设计归属 [Anthropic](https://www.anthropic.com)。本项目为社区作品，与 Anthropic 无官方关联。
+本项目基于公开仓库 [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk) 改造而来。原项目的概念、主体实现和社区积累，完整 credit 归属于原作者及其贡献者。
 
 ## 许可证
 

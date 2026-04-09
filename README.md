@@ -106,7 +106,7 @@ Current Mojocarrot reactions are face-zone based:
 ```bash
 # Clone the repo
 git clone https://github.com/lukelei2025/mojocarrot-on-desk.git
-cd clawd-on-desk
+cd mojocarrot-on-desk
 
 # Install dependencies
 npm install
@@ -114,6 +114,8 @@ npm install
 # Start Mojocarrot on Desk (auto-registers Claude Code hooks on launch)
 npm start
 ```
+
+For a fresh local install, this repository can now be treated as a standalone Mojocarrot project. You do not need to install the upstream `clawd-on-desk` repository first.
 
 ### Agent Setup
 
@@ -161,7 +163,7 @@ Remote hooks run in `CLAWD_REMOTE` mode which skips PID collection (remote PIDs 
 - **From source** (`npm start`): works out of the box on Intel and Apple Silicon.
 - **DMG installer**: the app is not signed with an Apple Developer certificate, so macOS Gatekeeper will block it. To open:
   - Right-click the app → **Open** → click **Open** in the dialog, or
-  - Run `xattr -cr /Applications/Clawd\ on\ Desk.app` in Terminal.
+  - Run `xattr -cr /Applications/Mojocarrot\ on\ Desk.app` in Terminal.
 
 ### Linux Notes
 
@@ -181,42 +183,9 @@ Remote hooks run in `CLAWD_REMOTE` mode which skips PID collection (remote PIDs 
 | **macOS/Linux auto-update** | No Apple code signing on macOS, no auto-update on Linux — download updates manually from GitHub Releases. |
 | **No test framework for Electron** | Unit tests cover agents and log polling, but the Electron main process (state machine, windows, tray) has no automated tests. |
 
-### Roadmap
-
-Some things we'd like to explore in the future:
-
-- Codex terminal focus via process tree lookup from `codex.exe` PID
-- Auto-registration of Copilot CLI hooks (like we do for Claude Code)
-- Sound effects for state transitions (blocked by Electron autoplay policy)
-- More character skins / animation packs
-- Hook uninstall script for clean app removal
-
-## Contributing
-
-Mojocarrot on Desk is a public derivative of [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk). Full credit for the original project, concept, and base implementation goes to the original repository and its contributors. This branch focuses on the Mojocarrot character theme, updated animation language, and WMLS-oriented presentation. Bug reports, feature ideas, and pull requests are all welcome — open an [issue](https://github.com/lukelei2025/mojocarrot-on-desk/issues) to discuss or submit a PR directly.
-
-### Contributors
-
-Thanks to everyone who has helped make this project better:
-
-<a href="https://github.com/PixelCookie-zyf"><img src="https://github.com/PixelCookie-zyf.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/yujiachen-y"><img src="https://github.com/yujiachen-y.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/AooooooZzzz"><img src="https://github.com/AooooooZzzz.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/purefkh"><img src="https://github.com/purefkh.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Tobeabellwether"><img src="https://github.com/Tobeabellwether.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Jasonhonghh"><img src="https://github.com/Jasonhonghh.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/crashchen"><img src="https://github.com/crashchen.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/hongbigtou"><img src="https://github.com/hongbigtou.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/InTimmyDate"><img src="https://github.com/InTimmyDate.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/NeizhiTouhu"><img src="https://github.com/NeizhiTouhu.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/xu3stones-cmd"><img src="https://github.com/xu3stones-cmd.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/androidZzT"><img src="https://github.com/androidZzT.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Ye-0413"><img src="https://github.com/Ye-0413.png" width="50" style="border-radius:50%" /></a>
-
 ## Acknowledgments
 
-- Original Clawd pixel art reference from [clawd-tank](https://github.com/marciogranzotto/clawd-tank) by [@marciogranzotto](https://github.com/marciogranzotto)
-- The original Clawd character is the property of [Anthropic](https://www.anthropic.com). This is a community project, not officially affiliated with or endorsed by Anthropic.
+This project is derived from the public repository [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk). Full credit for the original project, concept, and base implementation goes to its original author and contributors.
 
 ## License
 
