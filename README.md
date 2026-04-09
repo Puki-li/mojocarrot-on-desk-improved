@@ -6,7 +6,7 @@
   <a href="README.zh-CN.md">中文版</a>
 </p>
 
-A desktop pet that reacts to your AI coding agent sessions in real-time. It started from **Clawd on Desk**, and this branch turns it into **Mojocarrot on Desk** for WMLS with reworked scene choreography and character-specific animation tuning.
+A desktop pet that reacts to your AI coding agent sessions in real-time. This project is a Mojocarrot-themed derivative of the public repository [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk), adapted into **Mojocarrot on Desk** for WMLS with reworked scene choreography and character-specific animation tuning.
 
 > Supports Windows 11, macOS, and Ubuntu/Linux. Requires Node.js. Works with **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, and **Cursor Agent**.
 
@@ -16,7 +16,7 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. It star
 - **Mojocarrot for WMLS** — this branch replaces the default on-screen character with Mojocarrot while keeping the original multi-agent runtime, permission bubble flow, mini mode, and session logic
 - **Retuned animation language** — many scenes now reuse the original Clawd timing as a mother asset, but the acting, face layering, props, and overlays are adjusted for Mojocarrot
 - **Layered character assets** — Mojocarrot uses split body / leaves / eyes / mouth / sleep assets instead of a single flat sprite, which makes cursor tracking, sleep transitions, and scene-specific face handling more controllable
-- **Current note** — some GIF previews below still show the original Clawd-era capture set and have not been refreshed to Mojocarrot yet
+- **Credit to the original project** — the runtime architecture, hook model, and core desktop-pet workflow come from the original public `clawd-on-desk` project, while this branch focuses on Mojocarrot-specific assets, animation retiming, and presentation
 
 ### Multi-Agent Support
 - **Claude Code** — full integration via command hooks + HTTP permission hooks
@@ -62,23 +62,23 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. It star
 
 Events from all agents (Claude Code hooks, Codex JSONL, Copilot hooks) map to the same animation states:
 
-> Note: the table below reflects the current Mojocarrot branch behavior. Some preview GIFs still show older Clawd captures and will be updated separately.
+> Note: the table below reflects the current Mojocarrot branch behavior, and the preview GIFs have been regenerated from the current Mojocarrot assets.
 
 | Agent Event | Mojocarrot State | Animation | |
 |---|---|---|---|
-| Idle (no activity) | idle | Eye-tracking follow | <img src="assets/gif/clawd-idle.gif" width="200"> |
+| Idle (no activity) | idle | Eye-tracking follow | <img src="assets/gif/clawd-idle-follow.gif" width="200"> |
 | Idle (random) | idle | Reading a book | <img src="assets/gif/clawd-idle-reading.gif" width="200"> |
-| Idle (random) | idle | Debugger patrol | <img src="assets/gif/clawd-debugger.gif" width="200"> |
-| UserPromptSubmit | thinking | Thought bubble | <img src="assets/gif/clawd-thinking.gif" width="200"> |
-| PreToolUse / PostToolUse | working (typing) | Typing | <img src="assets/gif/clawd-typing.gif" width="200"> |
-| PreToolUse (3+ sessions) | working (building) | Building | <img src="assets/gif/clawd-building.gif" width="200"> |
-| SubagentStart (1) | juggling | Juggling | <img src="assets/gif/clawd-juggling.gif" width="200"> |
-| SubagentStart (2+) | conducting | Ultrathink-style orchestration | <img src="assets/gif/clawd-conducting.gif" width="200"> |
+| Idle (random) | idle | Debugger patrol | <img src="assets/gif/clawd-working-debugger.gif" width="200"> |
+| UserPromptSubmit | thinking | Thought bubble | <img src="assets/gif/clawd-working-thinking.gif" width="200"> |
+| PreToolUse / PostToolUse | working (typing) | Typing | <img src="assets/gif/clawd-working-typing.gif" width="200"> |
+| PreToolUse (3+ sessions) | working (building) | Building | <img src="assets/gif/clawd-working-building.gif" width="200"> |
+| SubagentStart (1) | juggling | Juggling | <img src="assets/gif/clawd-working-juggling.gif" width="200"> |
+| SubagentStart (2+) | conducting | Ultrathink-style orchestration | <img src="assets/gif/clawd-working-conducting.gif" width="200"> |
 | PostToolUseFailure / StopFailure | error | ERROR + smoke | <img src="assets/gif/clawd-error.gif" width="200"> |
 | Stop / PostCompact | attention | Happy bounce | <img src="assets/gif/clawd-happy.gif" width="200"> |
 | PermissionRequest / Notification | notification | Alert jump | <img src="assets/gif/clawd-notification.gif" width="200"> |
-| PreCompact | sweeping | Broom sweep | <img src="assets/gif/clawd-sweeping.gif" width="200"> |
-| WorktreeCreate | carrying | Fruit convoy run-by | <img src="assets/gif/clawd-carrying.gif" width="200"> |
+| PreCompact | sweeping | Broom sweep | <img src="assets/gif/clawd-working-sweeping.gif" width="200"> |
+| WorktreeCreate | carrying | Fruit convoy run-by | <img src="assets/gif/clawd-working-carrying.gif" width="200"> |
 | 60s no events | sleeping | Sleep sequence | <img src="assets/gif/clawd-sleeping.gif" width="200"> |
 
 ### Mini Mode
@@ -105,7 +105,7 @@ Current Mojocarrot reactions are face-zone based:
 
 ```bash
 # Clone the repo
-git clone https://github.com/rullerzhou-afk/clawd-on-desk.git
+git clone https://github.com/lukelei2025/mojocarrot-on-desk.git
 cd clawd-on-desk
 
 # Install dependencies
@@ -166,7 +166,7 @@ Remote hooks run in `CLAWD_REMOTE` mode which skips PID collection (remote PIDs 
 ### Linux Notes
 
 - **From source** (`npm start`): `--no-sandbox` is passed automatically to work around chrome-sandbox SUID requirements in dev mode.
-- **Packages**: AppImage and `.deb` are available from [GitHub Releases](https://github.com/rullerzhou-afk/clawd-on-desk/releases). After deb install, the app icon appears in GNOME's app menu.
+- **Packages**: AppImage and `.deb` are available from [GitHub Releases](https://github.com/lukelei2025/mojocarrot-on-desk/releases). After deb install, the app icon appears in GNOME's app menu.
 - **Terminal focus**: uses `wmctrl` or `xdotool` (whichever is available). Install one for session terminal jumping to work: `sudo apt install wmctrl` or `sudo apt install xdotool`.
 - **Auto-update**: not available on Linux — download new versions manually from GitHub Releases.
 
@@ -193,7 +193,7 @@ Some things we'd like to explore in the future:
 
 ## Contributing
 
-Mojocarrot on Desk is the current themed branch of a community-driven project. Bug reports, feature ideas, and pull requests are all welcome — open an [issue](https://github.com/rullerzhou-afk/clawd-on-desk/issues) to discuss or submit a PR directly.
+Mojocarrot on Desk is a public derivative of [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk). Full credit for the original project, concept, and base implementation goes to the original repository and its contributors. This branch focuses on the Mojocarrot character theme, updated animation language, and WMLS-oriented presentation. Bug reports, feature ideas, and pull requests are all welcome — open an [issue](https://github.com/lukelei2025/mojocarrot-on-desk/issues) to discuss or submit a PR directly.
 
 ### Contributors
 

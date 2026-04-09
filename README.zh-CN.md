@@ -6,7 +6,7 @@
   <a href="README.md">English</a>
 </p>
 
-一个能实时感知 AI 编程助手工作状态的桌面宠物。它起源于 **Clawd on Desk**，当前这个分支已经把对外形态改成 **Mojocarrot on Desk**：保留原项目的多 Agent 运行机制，同时把屏幕上的主角色替换为 **给 WMLS 们的 Mojocarrot**，并针对新角色重做了大量场景表演和动画节奏。
+一个能实时感知 AI 编程助手工作状态的桌面宠物。这个项目基于公开仓库 [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk) 改造而来，当前这个分支将其对外形态调整为 **Mojocarrot on Desk**：保留原项目的多 Agent 运行机制，同时把屏幕上的主角色替换为 **给 WMLS 们的 Mojocarrot**，并针对新角色重做了大量场景表演和动画节奏。
 
 > 支持 Windows 11、macOS 和 Ubuntu/Linux。需要 Node.js。支持 **Claude Code**、**Codex CLI**、**Copilot CLI**、**Gemini CLI** 与 **Cursor Agent**。
 
@@ -16,7 +16,7 @@
 - **给 WMLS 们的 Mojocarrot** — 当前分支已将默认主角色替换为 Mojocarrot，但保留原项目的多 Agent、权限气泡、极简模式和会话状态机
 - **基于原版重新编排动画** — 很多场景仍参考原版 Clawd 的母版节奏，但表情、道具、前景特效、点击反应和 mini 模式都已经按 Mojocarrot 重新设计
 - **分层角色资源** — Mojocarrot 使用身体、叶子、眼睛、嘴巴、睡姿等拆分资源，而不是单张扁平贴图，便于做眼球追踪、睡眠过渡和场景化脸部处理
-- **当前说明** — 下方部分 GIF 预览仍是旧版 Clawd 录制素材，尚未全部更新为 Mojocarrot 版本
+- **原项目 credit** — 当前分支沿用了原版 `clawd-on-desk` 的运行时架构、hook 模型和桌宠工作流，这里主要改的是 Mojocarrot 角色资源、动画节奏和对外展示
 
 ### 多 Agent 支持
 - **Claude Code** — 通过 command hook + HTTP 权限 hook 完整集成
@@ -60,23 +60,23 @@
 
 ## 状态映射
 
-> 下面这张表以当前 Mojocarrot 分支的实际行为为准。部分 GIF 预览图仍是旧版 Clawd 素材，后续会单独更新。
+> 下面这张表以当前 Mojocarrot 分支的实际行为为准，预览 GIF 也已经基于当前 Mojocarrot 资产重新生成。
 
 | Claude Code 事件 | Mojocarrot 状态 | 动画 | |
 |---|---|---|---|
-| 无活动 | 待机 | 眼球跟踪 | <img src="assets/gif/clawd-idle.gif" width="200"> |
+| 无活动 | 待机 | 眼球跟踪 | <img src="assets/gif/clawd-idle-follow.gif" width="200"> |
 | 无活动（随机） | 待机 | 看书 | <img src="assets/gif/clawd-idle-reading.gif" width="200"> |
-| 无活动（随机） | 待机 | 侦探巡逻 | <img src="assets/gif/clawd-debugger.gif" width="200"> |
-| UserPromptSubmit | 思考 | 思考泡泡 | <img src="assets/gif/clawd-thinking.gif" width="200"> |
-| PreToolUse / PostToolUse | 工作（打字） | 打字 | <img src="assets/gif/clawd-typing.gif" width="200"> |
-| PreToolUse（3+ 会话） | 工作（建造） | 建造 | <img src="assets/gif/clawd-building.gif" width="200"> |
-| SubagentStart（1 个） | 杂耍 | 杂耍 | <img src="assets/gif/clawd-juggling.gif" width="200"> |
-| SubagentStart（2+） | 指挥 | `ultrathink` 风格的高频调度态 | <img src="assets/gif/clawd-conducting.gif" width="200"> |
+| 无活动（随机） | 待机 | 侦探巡逻 | <img src="assets/gif/clawd-working-debugger.gif" width="200"> |
+| UserPromptSubmit | 思考 | 思考泡泡 | <img src="assets/gif/clawd-working-thinking.gif" width="200"> |
+| PreToolUse / PostToolUse | 工作（打字） | 打字 | <img src="assets/gif/clawd-working-typing.gif" width="200"> |
+| PreToolUse（3+ 会话） | 工作（建造） | 建造 | <img src="assets/gif/clawd-working-building.gif" width="200"> |
+| SubagentStart（1 个） | 杂耍 | 杂耍 | <img src="assets/gif/clawd-working-juggling.gif" width="200"> |
+| SubagentStart（2+） | 指挥 | `ultrathink` 风格的高频调度态 | <img src="assets/gif/clawd-working-conducting.gif" width="200"> |
 | PostToolUseFailure / StopFailure | 报错 | ERROR + 冒烟 | <img src="assets/gif/clawd-error.gif" width="200"> |
 | Stop / PostCompact | 注意 | 开心蹦跳 | <img src="assets/gif/clawd-happy.gif" width="200"> |
 | PermissionRequest / Notification | 通知 | 惊叹跳跃 | <img src="assets/gif/clawd-notification.gif" width="200"> |
-| PreCompact | 扫地 | 扫帚清扫 | <img src="assets/gif/clawd-sweeping.gif" width="200"> |
-| WorktreeCreate | 搬运 | 前景水果小队跑过 | <img src="assets/gif/clawd-carrying.gif" width="200"> |
+| PreCompact | 扫地 | 扫帚清扫 | <img src="assets/gif/clawd-working-sweeping.gif" width="200"> |
+| WorktreeCreate | 搬运 | 前景水果小队跑过 | <img src="assets/gif/clawd-working-carrying.gif" width="200"> |
 | 60 秒无事件 | 睡觉 | 睡眠序列 | <img src="assets/gif/clawd-sleeping.gif" width="200"> |
 
 ### 极简模式
@@ -103,7 +103,7 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/rullerzhou-afk/clawd-on-desk.git
+git clone https://github.com/lukelei2025/mojocarrot-on-desk.git
 cd clawd-on-desk
 
 # 安装依赖
@@ -159,7 +159,7 @@ Host my-server
 ### Linux 说明
 
 - **源码运行**（`npm start`）：自动传入 `--no-sandbox` 参数，跳过 chrome-sandbox SUID 校验。
-- **安装包**：AppImage 和 `.deb` 可从 [GitHub Releases](https://github.com/rullerzhou-afk/clawd-on-desk/releases) 下载。deb 安装后应用图标会出现在 GNOME 应用菜单。
+- **安装包**：AppImage 和 `.deb` 可从 [GitHub Releases](https://github.com/lukelei2025/mojocarrot-on-desk/releases) 下载。deb 安装后应用图标会出现在 GNOME 应用菜单。
 - **终端聚焦**：依赖 `wmctrl` 或 `xdotool`（有一个就行）。安装：`sudo apt install wmctrl` 或 `sudo apt install xdotool`。
 - **自动更新**：Linux 暂不支持自动更新，请从 GitHub Releases 手动下载新版本。
 
@@ -186,7 +186,7 @@ Host my-server
 
 ## 参与贡献
 
-Mojocarrot on Desk 是当前这个社区分支的对外名称。欢迎提 Bug、提需求、提 PR —— 在 [Issues](https://github.com/rullerzhou-afk/clawd-on-desk/issues) 里聊或直接提交 PR。
+Mojocarrot on Desk 是基于公开仓库 [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk) 衍生出的公开分支。原项目的概念、主体实现和社区积累属于原仓库及其贡献者，这个分支重点负责 Mojocarrot 角色主题、动画重编排和 WMLS 向展示。欢迎提 Bug、提需求、提 PR —— 在 [Issues](https://github.com/lukelei2025/mojocarrot-on-desk/issues) 里聊或直接提交 PR。
 
 ### 贡献者
 
