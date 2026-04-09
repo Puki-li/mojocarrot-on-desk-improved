@@ -96,10 +96,16 @@ Drag Mojocarrot to the right screen edge (or right-click → "Mini Mode") to ent
 ### Click Reactions
 
 Current Mojocarrot reactions are face-zone based:
-- **Face left / right taps** — directional left/right reactions only trigger from the left or right half of the face, not the leaves
-- **Repeated taps** — annoyed / panic-style reaction pool
-- **Rapid 4-clicks** — carrying convoy, double jump, and wizard transformation reaction pool
-- **Drag** — full-body sway while keeping the normal Mojocarrot face
+
+| Trigger | Reaction | Preview |
+|---|---|---|
+| Tap left half of the face | `react-left` directional glance | <img src="assets/gif/clawd-react-left.gif" width="140"> |
+| Tap right half of the face | `react-right` directional glance | <img src="assets/gif/clawd-react-right.gif" width="140"> |
+| Repeated taps | `react-annoyed` panic-style annoyed reaction | <img src="assets/gif/clawd-react-annoyed.gif" width="140"> |
+| Rapid 4-clicks | `react-double` fruit convoy run-by | <img src="assets/gif/clawd-react-double.gif" width="140"> |
+| Rapid 4-clicks | `react-double-jump` startled jump | <img src="assets/gif/clawd-react-double-jump.gif" width="140"> |
+| Rapid 4-clicks | `react-wizard` apple transformation | <img src="assets/gif/clawd-react-wizard.gif" width="140"> |
+| Drag the pet | `react-drag` full-body sway | <img src="assets/gif/clawd-react-drag.gif" width="140"> |
 
 ## Quick Start
 

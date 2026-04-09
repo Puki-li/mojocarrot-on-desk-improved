@@ -94,10 +94,16 @@
 ### 点击反应
 
 当前 Mojocarrot 的点击反应逻辑如下：
-- **左右脸点击** — 只有点在脸的左半边或右半边，才会触发 `react-left / react-right`，叶子不参与方向判定
-- **连续点击** — 会进入 annoyed / panic 风格反应池
-- **快速四击** — 会进入 carrying 跑团、double jump、wizard 变身反应池
-- **拖拽** — 会进入保留正常脸部的整身摇晃反应
+
+| 触发方式 | 反应 | 预览 |
+|---|---|---|
+| 点击脸的左半边 | `react-left` 左侧张望 | <img src="assets/gif/clawd-react-left.gif" width="140"> |
+| 点击脸的右半边 | `react-right` 右侧张望 | <img src="assets/gif/clawd-react-right.gif" width="140"> |
+| 连续点击 | `react-annoyed` panic 风格 annoyed 反应 | <img src="assets/gif/clawd-react-annoyed.gif" width="140"> |
+| 快速四击 | `react-double` 水果小队跑过 | <img src="assets/gif/clawd-react-double.gif" width="140"> |
+| 快速四击 | `react-double-jump` 惊跳 | <img src="assets/gif/clawd-react-double-jump.gif" width="140"> |
+| 快速四击 | `react-wizard` 青苹果变身 | <img src="assets/gif/clawd-react-wizard.gif" width="140"> |
+| 拖拽桌宠 | `react-drag` 整体摇晃 | <img src="assets/gif/clawd-react-drag.gif" width="140"> |
 
 ## 快速开始
 
