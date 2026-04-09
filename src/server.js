@@ -3,8 +3,8 @@
 
 const http = require("http");
 const fs = require("fs");
-const path = require("path");
 const os = require("os");
+const path = require("path");
 const {
   CLAWD_SERVER_HEADER,
   CLAWD_SERVER_ID,

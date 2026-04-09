@@ -258,6 +258,33 @@ describe("CodexLogMonitor", () => {
     }, 300);
   });
 
+  it("should detect a recently updated rollout file from a resumed session older than 7 calendar days", (_, done) => {
+    const config = makeConfig(tmpDir);
+    const now = new Date();
+    const resumed = new Date(now);
+    resumed.setDate(resumed.getDate() - 8);
+    const yyyy = resumed.getFullYear();
+    const mm = String(resumed.getMonth() + 1).padStart(2, "0");
+    const dd = String(resumed.getDate()).padStart(2, "0");
+    const dir = path.join(tmpDir, String(yyyy), mm, dd);
+    fs.mkdirSync(dir, { recursive: true });
+
+    const file = path.join(dir, "rollout-2026-04-01T23-36-24-019d49b0-4e0d-78c0-9173-7870f18db910.jsonl");
+    fs.writeFileSync(file, JSON.stringify({
+      timestamp: new Date().toISOString(),
+      type: "event_msg",
+      payload: { type: "task_started" },
+    }) + "\n");
+
+    monitor = new CodexLogMonitor(config, (sid, state) => {
+      if (state === "thinking") {
+        assert.match(sid, /^codex:/);
+        done();
+      }
+    });
+    monitor.start();
+  });
+
   it("should handle corrupted JSON lines gracefully", (_, done) => {
     const testFile = path.join(dateDir, TEST_FILENAME);
     fs.writeFileSync(testFile, [

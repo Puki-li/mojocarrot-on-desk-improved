@@ -81,7 +81,7 @@ class CodexLogMonitor {
   _getSessionDirs() {
     const dirs = [];
     const now = new Date();
-    for (let daysAgo = 0; daysAgo <= 7; daysAgo++) {
+    for (let daysAgo = 0; daysAgo <= 30; daysAgo++) {
       const d = new Date(now);
       d.setDate(d.getDate() - daysAgo);
       const yyyy = d.getFullYear();
