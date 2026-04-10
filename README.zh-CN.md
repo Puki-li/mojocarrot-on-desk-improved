@@ -60,7 +60,7 @@
 
 ## 状态映射
 
-> 下面这张表以当前 Mojocarrot 分支的实际行为为准，预览 GIF 也已经基于当前 Mojocarrot 资产重新生成。
+> 下面这张表以当前 Mojocarrot 分支的实际行为为准，预览 GIF 也已经基于当前 Mojocarrot 资产重新生成，并统一改为透明背景，便于嵌入文档或页面。
 
 | Claude Code 事件 | Mojocarrot 状态 | 动画 | |
 |---|---|---|---|

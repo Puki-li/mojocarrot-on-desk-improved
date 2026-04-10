@@ -62,7 +62,7 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. This pr
 
 Events from all agents (Claude Code hooks, Codex JSONL, Copilot hooks) map to the same animation states:
 
-> Note: the table below reflects the current Mojocarrot branch behavior, and the preview GIFs have been regenerated from the current Mojocarrot assets.
+> Note: the table below reflects the current Mojocarrot branch behavior, and the preview GIFs have been regenerated from the current Mojocarrot assets with transparent backgrounds for easier embedding.
 
 | Agent Event | Mojocarrot State | Animation | |
 |---|---|---|---|
