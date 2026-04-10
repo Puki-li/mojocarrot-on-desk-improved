@@ -193,6 +193,10 @@ Remote hooks run in `CLAWD_REMOTE` mode which skips PID collection (remote PIDs 
 
 This project is derived from the public repository [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk). Full credit for the original project, concept, and base implementation goes to its original author and contributors.
 
+The Mojocarrot character and related brand identity belong to [STAYREAL](https://tw.istayreal.com/). This repository is an unofficial, non-commercial fan project created for the WMLS community, and is not affiliated with, endorsed by, or operated by STAYREAL.
+
 ## License
 
-MIT
+The code in this repository continues to follow the upstream MIT license from `clawd-on-desk`.
+
+Character rights, trademarks, and other brand assets related to Mojocarrot remain the property of STAYREAL and are not transferred by the MIT license. This fan project is shared for non-commercial use only.

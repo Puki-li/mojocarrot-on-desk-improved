@@ -183,6 +183,10 @@ Host my-server
 
 本项目基于公开仓库 [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk) 改造而来。原项目的概念、主体实现和社区积累，完整 credit 归属于原作者及其贡献者。
 
+Mojocarrot 角色及相关品牌形象归属于 [STAYREAL](https://tw.istayreal.com/)。本仓库是面向 WMLS 社群的非官方、非商业化 fan project，与 STAYREAL 不存在隶属、背书或官方合作关系。
+
 ## 许可证
 
-MIT
+本仓库中的代码继续沿用上游 `clawd-on-desk` 的 MIT 许可证。
+
+与 Mojocarrot 相关的角色权利、商标与品牌资产仍归 STAYREAL 所有，不因 MIT 许可证而转移；本项目仅作为非商业化 fan project 分享。
