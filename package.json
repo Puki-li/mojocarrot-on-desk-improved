@@ -1,7 +1,7 @@
 {
-  "name": "clawd-on-desk",
+  "name": "mojocarrot-on-desk",
   "version": "0.5.9",
-  "description": "A desktop pet that reacts to your Claude Code sessions in real-time.",
+  "description": "A Mojocarrot-themed desktop pet derived from rullerzhou-afk/clawd-on-desk that reacts to your AI coding agent sessions in real-time.",
   "main": "src/main.js",
   "scripts": {
     "start": "node launch.js",
@@ -16,17 +16,18 @@
     "install:cursor-hooks": "node hooks/cursor-install.js"
   },
   "keywords": [
+    "mojocarrot",
     "clawd",
     "desktop-pet",
     "electron",
     "claude-code"
   ],
-  "author": "rullerzhou-afk",
+  "author": "lukelei2025",
   "license": "MIT",
   "type": "commonjs",
   "build": {
-    "appId": "com.clawd.on-desk",
-    "productName": "Clawd on Desk",
+    "appId": "com.mojocarrot.on-desk",
+    "productName": "Mojocarrot on Desk",
     "mac": {
       "icon": "assets/icon.png",
       "target": [
@@ -46,7 +47,7 @@
     "win": {
       "icon": "assets/icon.ico",
       "signAndEditExecutable": false,
-      "artifactName": "Clawd-on-Desk-Setup-${version}.${ext}",
+      "artifactName": "Mojocarrot-on-Desk-Setup-${version}.${ext}",
       "target": [
         {
           "target": "nsis",
@@ -57,7 +58,7 @@
       ]
     },
     "linux": {
-      "maintainer": "rullerzhou-afk <rullerzhou-afk@users.noreply.github.com>",
+      "maintainer": "lukelei2025 <lukelei2025@users.noreply.github.com>",
       "icon": "assets/icons",
       "category": "Utility",
       "target": [
@@ -104,8 +105,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "rullerzhou-afk",
-        "repo": "clawd-on-desk"
+        "owner": "lukelei2025",
+        "repo": "mojocarrot-on-desk"
       }
     ]
   },
