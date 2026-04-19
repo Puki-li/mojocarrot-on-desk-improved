@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MOJO&nbsp;CARROT on Desk — 动画展示</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    :root {
+      --bg: #fef7ed;
+      --surface: #ffffff;
+      --surface-2: #fefcf8;
+      --border: #f0e4d4;
+      --border-hover: #e0cdb5;
+      --text: #3d2e1e;
+      --text-muted: #9a8570;
+      --accent: #e07b2e;
+      --accent-soft: rgba(224, 123, 46, 0.10);
+      --green: #3a9e5c;
+      --green-soft: rgba(58, 158, 92, 0.10);
+      --purple: #7c5cbf;
+      --purple-soft: rgba(124, 92, 191, 0.10);
+      --blue: #2e8ec7;
+      --blue-soft: rgba(46, 142, 199, 0.10);
+      --red: #d04848;
+      --red-soft: rgba(208, 72, 72, 0.08);
+      --pink: #d4628e;
+      --pink-soft: rgba(212, 98, 142, 0.10);
+      --yellow: #c49a1a;
+      --yellow-soft: rgba(196, 154, 26, 0.10);
+      --muted: #8a9aab;
+      --muted-soft: rgba(138, 154, 171, 0.10);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      padding: 48px 20px 32px;
+      background: linear-gradient(180deg, rgba(224,123,46,0.07) 0%, transparent 100%);
+      border-bottom: 1px solid var(--border);
+    }
+    .header h1 {
+      font-size: 1.72rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 4px;
+      color: var(--text);
+    }
+    .header h1 span { color: var(--accent); }
+    .header p {
+      color: var(--text-muted);
+      font-size: 0.82rem;
+      max-width: 420px;
+      margin: 0 auto;
+    }
+
+    /* Navigation */
+    .nav {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px 16px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(254,247,237,0.92);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .nav a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.72rem;
+      font-weight: 500;
+      padding: 3px 10px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      transition: all 0.2s;
+    }
+    .nav a:hover {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    /* Sections */
+    .container {
+      max-width: 430px;
+      margin: 0 auto;
+      padding: 0 14px;
+    }
+    section {
+      padding: 26px 0;
+    }
+    section + section {
+      border-top: 1px solid var(--border);
+    }
+
+    .section-label {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      padding: 3px 10px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+    .section-title {
+      font-size: 1.08rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      line-height: 1.18;
+      margin-bottom: 3px;
+    }
+    .section-desc {
+      color: var(--text-muted);
+      font-size: 0.74rem;
+      line-height: 1.42;
+      max-width: 340px;
+      margin-bottom: 12px;
+    }
+
+    /* Cover */
+    .cover-section {
+      padding-top: 16px;
+      padding-bottom: 12px;
+    }
+    .cover-art {
+      position: relative;
+      aspect-ratio: 9 / 16;
+      overflow: hidden;
+      border-radius: 28px;
+      padding: 16px 14px;
+      background:
+        radial-gradient(circle at top left, rgba(255, 214, 170, 0.92) 0%, rgba(255, 214, 170, 0) 34%),
+        radial-gradient(circle at 85% 16%, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0) 22%),
+        linear-gradient(180deg, #fff6ea 0%, #ffe6c7 48%, #ffd3a0 100%);
+      border: 1px solid rgba(224, 123, 46, 0.18);
+      box-shadow: 0 18px 40px rgba(145, 88, 26, 0.18);
+      isolation: isolate;
+    }
+    .cover-art::before {
+      content: "";
+      position: absolute;
+      inset: auto -10% -14% auto;
+      width: 72%;
+      aspect-ratio: 1 / 1;
+      background: radial-gradient(circle, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0) 68%);
+      pointer-events: none;
+    }
+    .cover-title {
+      position: relative;
+      z-index: 9;
+      max-width: 344px;
+      font-size: 3.52rem;
+      line-height: 0.84;
+      letter-spacing: -0.07em;
+      font-weight: 700;
+      color: #41250f;
+      text-wrap: balance;
+      text-shadow: 0 2px 0 rgba(255, 251, 245, 0.55);
+      transform: rotate(-4deg);
+    }
+    .cover-meta {
+      position: relative;
+      z-index: 9;
+      display: inline-flex;
+      align-items: center;
+      margin-bottom: 12px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: rgba(255, 251, 245, 0.72);
+      border: 1px solid rgba(224, 123, 46, 0.16);
+      color: #8f551c;
+      font-size: 0.64rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      backdrop-filter: blur(8px);
+    }
+    .cover-title strong {
+      display: block;
+      margin-top: 6px;
+      color: #bc5d16;
+    }
+    .cover-line {
+      display: block;
+    }
+    .cover-line.lead {
+      font-size: 0.8em;
+      white-space: nowrap;
+    }
+    .cover-line.mojo {
+      white-space: nowrap;
+    }
+    .cover-sticker {
+      position: absolute;
+      display: block;
+      background: rgba(255, 251, 245, 0.94);
+      border: 1px solid rgba(224, 123, 46, 0.16);
+      border-radius: 24px;
+      padding: 14px 12px 8px;
+      box-shadow: 0 14px 24px rgba(121, 71, 20, 0.16);
+      backdrop-filter: blur(2px);
+    }
+    .cover-sticker img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .cover-sticker.idle {
+      z-index: 4;
+      width: 52%;
+      right: -4%;
+      top: 24%;
+      transform: rotate(17deg);
+    }
+    .cover-sticker.working {
+      z-index: 3;
+      width: 54%;
+      left: -7%;
+      bottom: 11%;
+      transform: rotate(-17deg);
+    }
+    .cover-sticker.happy {
+      z-index: 6;
+      width: 48%;
+      right: 2%;
+      bottom: -3%;
+      transform: rotate(12deg);
+    }
+    .cover-sticker.accent-sm {
+      z-index: 7;
+      width: 34%;
+      padding: 10px 9px 6px;
+      border-radius: 18px;
+      box-shadow: 0 10px 18px rgba(121, 71, 20, 0.12);
+      background: rgba(255, 249, 241, 0.92);
+    }
+    .cover-sticker.fruits {
+      left: 2%;
+      top: 40%;
+      transform: rotate(-30deg);
+    }
+    .cover-sticker.error {
+      right: 6%;
+      top: 50%;
+      transform: rotate(10deg);
+    }
+    /* Grid — 2 columns for portrait-friendly captures */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    /* Card — square, GIF dominant */
+    .card {
+      position: relative;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      overflow: hidden;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .card:hover {
+      border-color: var(--border-hover);
+      box-shadow: 0 2px 10px rgba(160, 120, 60, 0.10);
+    }
+    .card-preview {
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 2px 4px 12px;
+      aspect-ratio: 4 / 3;
+      background: radial-gradient(ellipse at center, var(--surface-2) 0%, var(--surface) 80%);
+    }
+    .card-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      transform: translateY(-13px) scale(1.08);
+      transform-origin: top center;
+      image-rendering: auto;
+      filter: drop-shadow(0 2px 4px rgba(120, 80, 30, 0.06));
+    }
+    .card-preview.mini {
+      aspect-ratio: 1 / 1;
+    }
+    .card-preview.mini img {
+      max-width: 100%;
+      max-height: 100%;
+    }
+    .card-body {
+      position: absolute;
+      left: 6px;
+      right: 6px;
+      bottom: 6px;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      flex-wrap: nowrap;
+      padding: 4px 6px;
+      text-align: center;
+      white-space: nowrap;
+      border-radius: 999px;
+      background: rgba(255, 252, 248, 0.88);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 2px 6px rgba(120, 80, 30, 0.08);
+    }
+    .card-tag {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.54rem;
+      font-weight: 500;
+      padding: 1px 6px;
+      border-radius: 3px;
+      margin-bottom: 0;
+    }
+    .card-name {
+      font-weight: 600;
+      font-size: 0.64rem;
+      line-height: 1;
+      color: var(--text);
+    }
+
+    /* Color tags */
+    .tag-idle { background: var(--green-soft); color: var(--green); }
+    .tag-thinking { background: var(--blue-soft); color: var(--blue); }
+    .tag-working { background: var(--accent-soft); color: var(--accent); }
+    .tag-subagent { background: var(--purple-soft); color: var(--purple); }
+    .tag-alert { background: var(--red-soft); color: var(--red); }
+    .tag-notification { background: var(--yellow-soft); color: var(--yellow); }
+    .tag-sleep { background: var(--muted-soft); color: var(--muted); }
+    .tag-mini { background: var(--pink-soft); color: var(--pink); }
+    .tag-reaction { background: rgba(124, 92, 191, 0.10); color: #7c5cbf; }
+
+    /* Section label colors */
+    .label-idle { background: var(--green-soft); color: var(--green); }
+    .label-working { background: var(--accent-soft); color: var(--accent); }
+    .label-alert { background: var(--red-soft); color: var(--red); }
+    .label-sleep { background: var(--muted-soft); color: var(--muted); }
+    .label-mini { background: var(--pink-soft); color: var(--pink); }
+    .label-reaction { background: rgba(124, 92, 191, 0.08); color: #7c5cbf; }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 28px 20px;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 0.72rem;
+    }
+    .footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .footer a:hover { text-decoration: underline; }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      .header { padding: 34px 14px 24px; }
+      .header h1 { font-size: 1.36rem; }
+      .header p { font-size: 0.76rem; }
+      section { padding: 22px 0; }
+      .grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <h1><span>MOJO&nbsp;CARROT</span> on Desk</h1>
+  <p>像素风桌宠，实时感知 AI 编程助手的工作状态并播放对应动画。以下是全部动画一览。</p>
+</div>
+
+<!-- Nav -->
+<div class="nav">
+  <a href="#idle">待机</a>
+  <a href="#working">工作</a>
+  <a href="#attention">通知</a>
+  <a href="#sleep">睡眠</a>
+  <a href="#mini">极简模式</a>
+  <a href="#reactions">互动</a>
+</div>
+
+<div class="container">
+
+  <section id="cover" class="cover-section">
+    <div class="cover-art">
+      <div class="cover-meta">适配 Claude Code / Codex 等命令行工具</div>
+      <div class="cover-title">
+        爆改Clawd桌宠
+        <strong>
+          <span class="cover-line lead">给WMLS设计的</span>
+          <span class="cover-line mojo">MOJO&nbsp;CARROT</span>
+          <span class="cover-line">桌宠</span>
+        </strong>
+      </div>
+      <div class="cover-sticker accent-sm fruits">
+        <img src="assets/svg/clawd-sleeping.svg" alt="Mojocarrot sleeping cover sticker">
+      </div>
+      <div class="cover-sticker accent-sm error">
+        <img src="assets/svg/clawd-error.svg" alt="Mojocarrot error cover sticker">
+      </div>
+      <div class="cover-sticker idle">
+        <img src="assets/svg/clawd-idle-follow.svg" alt="Mojocarrot idle cover frame">
+      </div>
+      <div class="cover-sticker working">
+        <img src="assets/svg/clawd-working-typing.svg" alt="Mojocarrot typing cover frame">
+      </div>
+      <div class="cover-sticker happy">
+        <img src="assets/svg/clawd-happy.svg" alt="Mojocarrot happy cover frame">
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 待机 ==================== -->
+  <section id="idle">
+    <div class="section-label label-idle">● 待机状态</div>
+    <h2 class="section-title">当他开始摸鱼时...</h2>
+    <p class="section-desc">他们不工作的时候... 就会盯鼠标、翻小书，再慢悠悠晃一圈...</p>
+    <div class="grid">
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-idle-follow-demo.gif" alt="idle-follow"></div>
+        <div class="card-body">
+          <div class="card-tag tag-idle">idle · follow</div>
+          <div class="card-name">盯着鼠标</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-idle-living.gif" alt="idle-living"></div>
+        <div class="card-body">
+          <div class="card-tag tag-idle">idle · living</div>
+          <div class="card-name">呼吸发呆</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-idle-look.gif" alt="idle-look"></div>
+        <div class="card-body">
+          <div class="card-tag tag-idle">idle · look</div>
+          <div class="card-name">东张西望</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-idle-reading.gif" alt="idle-reading"></div>
+        <div class="card-body">
+          <div class="card-tag tag-idle">idle · reading</div>
+          <div class="card-name">偷偷看书</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-working-debugger.gif" alt="debugger"></div>
+        <div class="card-body">
+          <div class="card-tag tag-idle">idle · debugger</div>
+          <div class="card-name">巡逻一圈</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-react-drag.gif" alt="react-drag"></div>
+        <div class="card-body">
+          <div class="card-tag tag-idle">idle · drag</div>
+          <div class="card-name">当被拖拽移动</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 工作（合并子代理） ==================== -->
+  <section id="working">
+    <div class="section-label label-working">● 工作全流程</div>
+    <h2 class="section-title">当他突然认真起来时...</h2>
+    <p class="section-desc">轮到他上班的时候... 不是敲字搬砖，就是摇人一起往前冲...</p>
+    <div class="grid">
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-working-thinking.gif" alt="thinking"></div>
+        <div class="card-body">
+          <div class="card-tag tag-thinking">thinking</div>
+          <div class="card-name">认真开工</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-working-typing.gif" alt="typing"></div>
+        <div class="card-body">
+          <div class="card-tag tag-working">1 个会话</div>
+          <div class="card-name">动手敲字</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-working-juggling.gif" alt="juggling"></div>
+        <div class="card-body">
+          <div class="card-tag tag-working">2 个会话</div>
+          <div class="card-name">忙到杂耍</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-working-building.gif" alt="building"></div>
+        <div class="card-body">
+          <div class="card-tag tag-working">3+ 个会话</div>
+          <div class="card-name">疯狂搬砖</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-working-conducting.gif" alt="conducting"></div>
+        <div class="card-body">
+          <div class="card-tag tag-subagent">2+ 子代理</div>
+          <div class="card-name">摇人指挥</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-working-sweeping.gif" alt="sweeping"></div>
+        <div class="card-body">
+          <div class="card-tag tag-subagent">PreCompact</div>
+          <div class="card-name">先扫一下</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 通知 ==================== -->
+  <section id="attention">
+    <div class="section-label label-alert">● 结果通知</div>
+    <h2 class="section-title">当他有话要说时...</h2>
+    <p class="section-desc">一有结果他就憋不住... 开心会蹦，报错会炸，权限来了还要冲脸提醒...</p>
+    <div class="grid">
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-happy.gif" alt="happy"></div>
+        <div class="card-body">
+          <div class="card-tag tag-alert">task done</div>
+          <div class="card-name">任务完成！</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-notification.gif" alt="notification"></div>
+        <div class="card-body">
+          <div class="card-tag tag-notification">permission</div>
+          <div class="card-name">权限提醒</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-error.gif" alt="error"></div>
+        <div class="card-body">
+          <div class="card-tag tag-alert">error</div>
+          <div class="card-name">冒烟报错</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 睡眠 ==================== -->
+  <section id="sleep">
+    <div class="section-label label-sleep">● 睡眠序列</div>
+    <h2 class="section-title">当他困到不行时...</h2>
+    <p class="section-desc">你太久不理他... 他会一路哈欠到睡着；你鼠标一动... 他又立刻惊醒...</p>
+    <div class="grid">
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-idle-yawn.gif" alt="yawn"></div>
+        <div class="card-body">
+          <div class="card-tag tag-sleep">20s</div>
+          <div class="card-name">哈欠一下</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-idle-collapse.gif" alt="collapse"></div>
+        <div class="card-body">
+          <div class="card-tag tag-sleep">倒下</div>
+          <div class="card-name">直接趴倒</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-sleeping.gif" alt="sleeping"></div>
+        <div class="card-body">
+          <div class="card-tag tag-sleep">10min</div>
+          <div class="card-name">睡到打呼</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-wake.gif" alt="wake"></div>
+        <div class="card-body">
+          <div class="card-tag tag-sleep">wake</div>
+          <div class="card-name">猛地弹醒</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 极简模式 ==================== -->
+  <section id="mini">
+    <div class="section-label label-mini">● 极简模式</div>
+    <h2 class="section-title">当他缩去角落里时...</h2>
+    <p class="section-desc">把他赶到边边以后... 他表面缩着，实际还在偷看你...</p>
+    <div class="grid">
+      <div class="card">
+        <div class="card-preview mini"><img src="assets/gif/clawd-mini-idle.gif" alt="mini-idle"></div>
+        <div class="card-body">
+          <div class="card-tag tag-mini">mini-idle</div>
+          <div class="card-name">缩边待机</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview mini"><img src="assets/gif/clawd-mini-peek.gif" alt="mini-peek"></div>
+        <div class="card-body">
+          <div class="card-tag tag-mini">mini-peek</div>
+          <div class="card-name">探头招手</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview mini"><img src="assets/gif/clawd-mini-enter.gif" alt="mini-enter"></div>
+        <div class="card-body">
+          <div class="card-tag tag-mini">mini-enter</div>
+          <div class="card-name">缩回边边</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview mini"><img src="assets/gif/clawd-mini-crabwalk.gif" alt="mini-crabwalk"></div>
+        <div class="card-body">
+          <div class="card-tag tag-mini">mini-crabwalk</div>
+          <div class="card-name">横着挪进</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview mini"><img src="assets/gif/clawd-mini-alert.gif" alt="mini-alert"></div>
+        <div class="card-body">
+          <div class="card-tag tag-mini">mini-alert</div>
+          <div class="card-name">缝里冒泡</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview mini"><img src="assets/gif/clawd-mini-happy.gif" alt="mini-happy"></div>
+        <div class="card-body">
+          <div class="card-tag tag-mini">mini-happy</div>
+          <div class="card-name">偷偷放花</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview mini"><img src="assets/gif/clawd-mini-sleep.gif" alt="mini-sleep"></div>
+        <div class="card-body">
+          <div class="card-tag tag-mini">mini-sleep</div>
+          <div class="card-name">缩着睡觉</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview mini"><img src="assets/gif/clawd-mini-enter-sleep.gif" alt="mini-enter-sleep"></div>
+        <div class="card-body">
+          <div class="card-tag tag-mini">mini-enter-sleep</div>
+          <div class="card-name">困着钻进</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 互动 ==================== -->
+  <section id="reactions">
+    <div class="section-label label-reaction">● 互动反应</div>
+    <h2 class="section-title">当他又被你戳到时...</h2>
+    <p class="section-desc">你手一欠去戳他... 他先瞄你，再乱舞，最后直接变身青苹果...</p>
+    <div class="grid">
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-react-left.gif" alt="react-left"></div>
+        <div class="card-body">
+          <div class="card-tag tag-reaction">戳左脸</div>
+          <div class="card-name">往左瞄你</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-react-right.gif" alt="react-right"></div>
+        <div class="card-body">
+          <div class="card-tag tag-reaction">戳右脸</div>
+          <div class="card-name">往右瞄你</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-react-annoyed.gif" alt="react-annoyed"></div>
+        <div class="card-body">
+          <div class="card-tag tag-reaction">连续戳</div>
+          <div class="card-name">别戳啦</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-react-double.gif" alt="react-double"></div>
+        <div class="card-body">
+          <div class="card-tag tag-reaction">疯狂 4 连击</div>
+          <div class="card-name">水果们跑过</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-react-double-jump.gif" alt="react-double-jump"></div>
+        <div class="card-body">
+          <div class="card-tag tag-reaction">疯狂 4 连击</div>
+          <div class="card-name">大吃一惊</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-preview"><img src="assets/gif/clawd-react-wizard.gif" alt="react-wizard"></div>
+        <div class="card-body">
+          <div class="card-tag tag-reaction">疯狂 4 连击</div>
+          <div class="card-name">变身青苹果</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- Footer -->
+<div class="footer">
+  <p>MOJO&nbsp;CARROT on Desk — 非官方、非商业的粉丝项目，仅供 WMLS 社区使用。</p>
+  <p style="margin-top:4px">基于 <a href="https://github.com/rullerzhou-afk/clawd-on-desk" target="_blank">clawd-on-desk</a> 衍生。MOJO&nbsp;CARROT 及相关素材版权归 <a href="https://tw.istayreal.com/" target="_blank">STAYREAL</a> 所有。</p>
+</div>
+
+</body>
+</html>

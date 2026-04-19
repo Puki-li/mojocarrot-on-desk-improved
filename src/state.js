@@ -43,7 +43,6 @@ const MIN_DISPLAY_MS = {
   attention: 4000,
   error: 5000,
   sweeping: 5500,
-  notification: 2500,
   carrying: 3000,
   working: 1000,
   thinking: 1000,
@@ -55,7 +54,6 @@ const AUTO_RETURN_MS = {
   attention: 4000,
   error: 5000,
   sweeping: 300000,
-  notification: 2500,
   carrying: 3000,
   "mini-alert": 4000,
   "mini-happy": 4000,
@@ -71,7 +69,7 @@ const STATE_PRIORITY = {
   carrying: 4, juggling: 4, working: 3, thinking: 2, idle: 1, sleeping: 0,
 };
 
-const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "notification", "carrying"]);
+const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "carrying"]);
 
 // Session display hints (e.g. Cursor tool_name → svg); basename only, allowlisted
 const DISPLAY_HINT_SVGS = new Set([
