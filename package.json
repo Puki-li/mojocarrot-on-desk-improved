@@ -105,8 +105,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "lukelei2025",
-        "repo": "mojocarrot-on-desk"
+        "owner": "Puki-li",
+        "repo": "mojocarrot-on-desk-improved"
       }
     ]
   },
