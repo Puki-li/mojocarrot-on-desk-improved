@@ -51,6 +51,14 @@ describe("notification state behavior", () => {
     assert.strictEqual(api.getCurrentSvg(), "clawd-notification.svg");
   });
 
+  it("displays notification for a Notification hook event", () => {
+    api.updateSession("s1", "notification", "Notification", null, "/tmp", null, null, null, "claude-code");
+    assert.strictEqual(api.getCurrentState(), "notification");
+    assert.strictEqual(api.getCurrentSvg(), "clawd-notification.svg");
+    // session itself is stored as idle so notification stays a transient overlay
+    assert.strictEqual(api.sessions.get("s1").state, "idle");
+  });
+
   it("lets a new working state replace notification immediately", () => {
     api.updateSession("s1", "working", "PermissionRequest", null, "/tmp", null, null, null, "claude-code");
     assert.strictEqual(api.getCurrentState(), "notification");

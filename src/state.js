@@ -69,7 +69,9 @@ const STATE_PRIORITY = {
   carrying: 4, juggling: 4, working: 3, thinking: 2, idle: 1, sleeping: 0,
 };
 
-const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "carrying"]);
+// notification is oneshot but sticky: no MIN_DISPLAY_MS/AUTO_RETURN_MS entry,
+// so it shows immediately and stays until the next session event replaces it
+const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "carrying", "notification"]);
 
 // Session display hints (e.g. Cursor tool_name → svg); basename only, allowlisted
 const DISPLAY_HINT_SVGS = new Set([

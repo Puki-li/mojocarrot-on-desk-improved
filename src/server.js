@@ -282,6 +282,10 @@ function startHttpServer() {
 
           ctx.pendingPermissions.push(permEntry);
 
+          // Show notification on the pet while the bubble waits for an answer;
+          // sticky (oneshot) — the next session event replaces it
+          ctx.setState("notification");
+
           if (ctx.hideBubbles) {
             ctx.permLog(`bubble hidden: tool=${toolName} session=${sessionId} — terminal only`);
           } else {

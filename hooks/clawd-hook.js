@@ -5,6 +5,7 @@
 // Reads stdin JSON from Claude Code for session_id
 
 const { postStateToRunningServer, readHostPrefix } = require("./server-config");
+const { resolvePostToolUseFailureState } = require("./clawd-hook-lib");
 
 const EVENT_TO_STATE = {
   SessionStart: "idle",
@@ -166,26 +167,29 @@ process.stdin.on("end", () => {
   let sessionId = "default";
   let cwd = "";
   let source = "";
+  let toolName = "";
   try {
     const payload = JSON.parse(Buffer.concat(chunks).toString());
     sessionId = payload.session_id || "default";
     cwd = payload.cwd || "";
     source = payload.source || payload.reason || "";
+    toolName = payload.tool_name || "";
   } catch {}
-  send(sessionId, cwd, source);
+  send(sessionId, cwd, source, toolName);
 });
 
 // Safety: if stdin doesn't end in 400ms, send with default session
 // (200ms was too aggressive on slow machines / AV scanning)
 setTimeout(() => send("default", ""), 400);
 
-function send(sessionId, cwd, source) {
+function send(sessionId, cwd, source, toolName) {
   if (sent) return;
   sent = true;
 
   // /clear triggers SessionEnd → SessionStart in quick succession;
   // show sweeping (clearing context) instead of sleeping
-  const resolvedState = (event === "SessionEnd" && source === "clear") ? "sweeping" : state;
+  let resolvedState = (event === "SessionEnd" && source === "clear") ? "sweeping" : state;
+  if (event === "PostToolUseFailure") resolvedState = resolvePostToolUseFailureState(toolName);
 
   const body = { state: resolvedState, session_id: sessionId, event };
   body.agent_id = "claude-code";
