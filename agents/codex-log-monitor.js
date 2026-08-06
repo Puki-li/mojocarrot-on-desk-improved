@@ -13,10 +13,12 @@ class CodexLogMonitor {
   /**
    * @param {object} agentConfig - codex.js config (logConfig + logEventMap)
    * @param {function} onStateChange - (sessionId, state, event, extra) => void
+   * @param {function|null} onRecord - optional raw-record consumer for shared JSONL-derived data
    */
-  constructor(agentConfig, onStateChange) {
+  constructor(agentConfig, onStateChange, onRecord = null) {
     this._config = agentConfig;
     this._onStateChange = onStateChange;
+    this._onRecord = typeof onRecord === "function" ? onRecord : null;
     this._interval = null;
     // Map<filePath, { offset, sessionId, cwd, lastEventTime, lastState, partial }>
     this._tracked = new Map();
@@ -153,6 +155,15 @@ class CodexLogMonitor {
       obj = JSON.parse(line);
     } catch {
       return; // corrupted line, skip
+    }
+    if (this._onRecord) {
+      try {
+        this._onRecord(obj, {
+          sessionId: tracked.sessionId,
+          cwd: tracked.cwd,
+          observedAtMs: Date.now(),
+        });
+      } catch {}
     }
 
     const type = obj.type;

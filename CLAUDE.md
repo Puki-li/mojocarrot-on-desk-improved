@@ -96,6 +96,7 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 - `agents/cursor-agent.js` — Cursor Agent（hooks.json）事件映射
 - `agents/registry.js` — agent 注册表：按 ID 或进程名查找 agent 配置
 - `agents/codex-log-monitor.js` — Codex JSONL 增量轮询器（文件监视 + 增量读取 + 事件去重）
+- `agents/codex-quota.js` — 从本地 Codex rollout JSONL 中提取最长限额窗口（当前为周额度）及重置时间
 
 ### 核心文件
 
@@ -103,6 +104,8 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 |------|------|
 | `src/main.js` | Electron 主进程胶水：窗口创建、ipcMain 分发、ctx 组装、app 生命周期、偏好持久化、屏幕工具、HWND 恢复 |
 | `src/state.js` | 状态机核心：setState/applyState、多会话追踪、resolveDisplayState、DND、wake poll、进程存活检测、session submenu |
+| `src/activity.js` | 活跃状态条、会话面板、重要状态卡三个 Electron 窗口的生命周期、IPC 与定位 |
+| `src/activity-model.js` | Agent 活跃状态、优先级、完成态 10 分钟保留和面板快照的数据模型 |
 | `src/server.js` | HTTP 服务：/state（GET 健康检查 + POST 状态更新）、/permission（权限 hook）、端口发现、hook 注册 |
 | `src/permission.js` | 权限气泡：BrowserWindow 创建/堆叠/销毁、allow/deny/suggestion 决策、PASSTHROUGH_TOOLS |
 | `src/updater.js` | 自动更新：electron-updater 懒加载、GitHub API 版本检查、更新对话框、菜单状态标签 |
@@ -137,7 +140,7 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 - **最小显示时长**：防止快速闪切（error 5s、attention 4s、carrying 3s、sweeping 5.5s、working/thinking 1s）
 - **单次性状态**：attention/error/carrying 按动画时长自动回退；sweeping 最长保留 5 分钟；notification 立即显示并保持到下一次会话事件
 - **睡眠序列**：20s 鼠标静止 → idle-look → 60s → yawning(3s) → dozing → 10min → collapsing(0.8s) → sleeping；鼠标移动触发 waking(1.5s) → 恢复
-- **DND 模式**：右键菜单 / 托盘"休眠（免打扰）"→ 跳过 dozing 直接 yawning → collapsing → sleeping，屏蔽所有 hook 事件；唤醒后播放 waking 动画
+- **DND 模式**：右键菜单 / 托盘"休眠（免打扰）"→ 跳过 dozing 直接 yawning → collapsing → sleeping；静默桌宠动画、权限气泡和额度提醒，但继续维护活跃会话数据；唤醒后播放 waking 动画
 - **working 子动画**：1 个会话 → typing，2 个 → juggling，3+ → building
 - **juggling 子动画**：1 个 subagent → juggling，2+ → conducting
 
@@ -150,7 +153,7 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 - **动态高度**：bubble 通过 IPC `bubble-height` 上报实际渲染高度，主进程据此精确堆叠
 - **决策选项**：Allow（允许）、Deny（拒绝）、suggestion 按钮（如"始终允许"、"自动接受编辑"）
 - **客户端断连**：`res.on("close")` 检测 Claude Code 超时或用户在终端回答，自动清理气泡
-- **DND 模式**：休眠时自动 deny 所有权限请求，不弹气泡
+- **DND 模式**：休眠时不弹权限气泡，也不替用户做 allow/deny 决策；阻塞式 Claude Code 权限请求留在终端处理，活跃面板仍显示等待状态
 - **suggestion 格式**：支持 `addRules`（权限规则）和 `setMode`（切换模式）两种类型
 - **Codex 通知气泡**：Codex CLI 无法使用阻塞式 HTTP hook，通过 JSONL 日志检测 `exec_approval_request` / `apply_patch_approval_request` 触发通知气泡，仅提供 Dismiss 按钮（无 Allow/Deny），30 秒自动过期
 

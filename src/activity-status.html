@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self';">
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="activity.css">
+  <title>Agent 状态</title>
+</head>
+<body class="activity-status-window">
+  <button class="activity-status" id="activityStatus" type="button" data-tone="idle" aria-label="打开活跃会话">
+    <span class="status-dot" aria-hidden="true"></span>
+    <span class="status-label" id="statusLabel">Idle</span>
+  </button>
+  <script src="activity-view-model.js"></script>
+  <script src="activity-status-renderer.js"></script>
+</body>
+</html>

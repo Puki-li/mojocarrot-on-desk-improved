@@ -210,18 +210,22 @@ function startHttpServer() {
           return;
         }
 
-        if (ctx.doNotDisturb) {
-          ctx.permLog("SKIPPED: DND mode");
-          ctx.sendPermissionResponse(res, "deny", "Clawd is in Do Not Disturb mode");
-          return;
-        }
-
         try {
           const data = JSON.parse(body);
           const toolName = typeof data.tool_name === "string" ? data.tool_name : "Unknown";
           const rawInput = data.tool_input && typeof data.tool_input === "object" ? data.tool_input : {};
           const toolInput = truncateDeep(rawInput);
           const sessionId = data.session_id || "default";
+          if (ctx.doNotDisturb) {
+            // Keep the request visible in the manually opened activity panel,
+            // but use an empty success response so Claude Code falls back to
+            // terminal without Mojocarrot making an allow/deny decision.
+            ctx.updateSession(sessionId, "notification", "PermissionRequest", null, "", null, null, null, "claude-code");
+            res.writeHead(200, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
+            res.end();
+            ctx.permLog(`SKIPPED: DND mode — terminal only session=${sessionId} (empty response)`);
+            return;
+          }
           const rawSuggestions = Array.isArray(data.permission_suggestions) ? data.permission_suggestions : [];
           // Merge multiple addRules suggestions (e.g. piped commands) into one button
           const addRulesItems = rawSuggestions.filter(s => s && s.type === "addRules");
@@ -284,7 +288,7 @@ function startHttpServer() {
 
           // Show notification on the pet while the bubble waits for an answer;
           // sticky (oneshot) — the next session event replaces it
-          ctx.setState("notification");
+          ctx.updateSession(sessionId, "notification", "PermissionRequest", null, "", null, null, null, "claude-code");
 
           if (ctx.hideBubbles) {
             ctx.permLog(`bubble hidden: tool=${toolName} session=${sessionId} — terminal only`);

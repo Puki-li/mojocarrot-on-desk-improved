@@ -187,6 +187,7 @@ function resolvePermissionEntry(permEntry, behavior, message) {
   }
 
   pendingPermissions.splice(idx, 1);
+  if (typeof ctx.onPermissionSettled === "function") ctx.onPermissionSettled(permEntry.sessionId);
 
   const { res, abortHandler, bubble: bub } = permEntry;
   if (abortHandler) res.removeListener("close", abortHandler);
@@ -219,6 +220,33 @@ function resolvePermissionEntry(permEntry, behavior, message) {
   }
 
   sendPermissionResponse(res, decision);
+}
+
+function handOffPermissionEntry(permEntry, { focusTerminal = false } = {}) {
+  if (!permEntry || permEntry.isCodexNotify) return false;
+  const idx = pendingPermissions.indexOf(permEntry);
+  if (idx !== -1) pendingPermissions.splice(idx, 1);
+
+  const bubble = permEntry.bubble;
+  if (bubble && !bubble.isDestroyed()) {
+    bubble.webContents.send("permission-hide");
+    if (permEntry.hideTimer) clearTimeout(permEntry.hideTimer);
+    permEntry.hideTimer = setTimeout(() => {
+      if (!bubble.isDestroyed()) bubble.destroy();
+    }, 250);
+  }
+  repositionBubbles();
+
+  const res = permEntry.res;
+  if (res && !res.writableEnded && !res.destroyed) {
+    if (permEntry.abortHandler && typeof res.removeListener === "function") {
+      res.removeListener("close", permEntry.abortHandler);
+    }
+    res.writeHead(200, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
+    res.end();
+  }
+  if (focusTerminal) ctx.focusTerminalForSession(permEntry.sessionId);
+  return true;
 }
 
 function permLog(msg) {
@@ -289,18 +317,9 @@ function handleDecide(event, behavior) {
     }
     resolvePermissionEntry(perm, "allow");
   } else if (behavior === "deny-and-focus") {
-    // Dismiss bubble without responding — let user decide in terminal.
-    // Keep abortHandler registered so socket cleanup happens when Claude Code disconnects.
-    const idx = pendingPermissions.indexOf(perm);
-    if (idx !== -1) pendingPermissions.splice(idx, 1);
-    if (perm.bubble && !perm.bubble.isDestroyed()) {
-      perm.bubble.webContents.send("permission-hide");
-      if (perm.hideTimer) clearTimeout(perm.hideTimer);
-      const bub = perm.bubble;
-      perm.hideTimer = setTimeout(() => { if (!bub.isDestroyed()) bub.destroy(); }, 250);
-    }
-    repositionBubbles();
-    ctx.focusTerminalForSession(perm.sessionId);
+    // Empty 2xx means this hook made no decision. Claude Code immediately
+    // falls back to the permission prompt that is already visible in terminal.
+    handOffPermissionEntry(perm, { focusTerminal: true });
   } else {
     resolvePermissionEntry(perm, behavior === "allow" ? "allow" : "deny");
   }
@@ -362,7 +381,7 @@ function cleanup() {
 
 return {
   showPermissionBubble, resolvePermissionEntry,
-  sendPermissionResponse, repositionBubbles, permLog,
+  handOffPermissionEntry, sendPermissionResponse, repositionBubbles, permLog,
   pendingPermissions, PASSTHROUGH_TOOLS,
   handleBubbleHeight, handleDecide, cleanup,
   showCodexNotifyBubble, clearCodexNotifyBubbles,

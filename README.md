@@ -43,6 +43,10 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. This pr
 
 ### Session Intelligence
 - **Multi-session tracking** — sessions across all agents resolve to the highest-priority state
+- **Always-visible activity pill** — shows `Idle`, `DND`, or the dominant agent plus the number of other active sessions; click it to open the activity panel
+- **Activity panel** — lists current sessions across Codex, Claude Code, Cursor, Copilot, and Gemini; completed sessions remain visible for 10 minutes
+- **Codex weekly usage** — the activity panel emphasizes the remaining weekly percentage and shows the local reset date, weekday, and time
+- **Important status card** — waiting input, errors, completions, and Codex 20%/10% quota thresholds use a single priority-based alert card
 - **Subagent awareness** — juggling for 1 subagent, conducting for 2+
 - **Terminal focus** — right-click Mojocarrot → Sessions menu to jump to a specific session's terminal window; notification/attention states auto-focus the relevant terminal
 - **Process liveness detection** — detects crashed/exited agent processes (Claude Code, Codex, Copilot) and cleans up orphan sessions
@@ -53,7 +57,7 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. This pr
 - **Position memory** — Mojocarrot remembers where you left it across restarts (including mini mode)
 - **Single instance lock** — prevents duplicate app windows
 - **Auto-start** — Claude Code's SessionStart hook can launch Mojocarrot on Desk automatically if it's not running
-- **Do Not Disturb** — right-click or tray menu to enter sleep mode; all hook events are silenced until you wake Mojocarrot
+- **Do Not Disturb** — right-click or use the tray menu to sleep and suppress Mojocarrot animations, permission bubbles, and quota reminders; permission decisions remain in the agent terminal
 - **System tray** — resize (S/M/L), DND mode, language switch, auto-start, check for updates
 - **i18n** — English and Chinese UI; switch via right-click menu or tray
 - **Auto-update** — checks GitHub releases; Windows installs NSIS updates on quit, macOS opens the release page, Linux requires manual download

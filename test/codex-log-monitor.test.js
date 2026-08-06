@@ -418,4 +418,19 @@ describe("CodexLogMonitor", () => {
     assert.strictEqual(monitor._extractShellCommand(null), "");
     assert.strictEqual(monitor._extractShellCommand({}), "");
   });
+
+  it("should expose unmapped token-count records to incremental consumers", (_, done) => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    fs.writeFileSync(testFile, [
+      '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
+      '{"type":"event_msg","payload":{"type":"token_count","rate_limits":{}}}',
+    ].join("\n") + "\n");
+
+    monitor = new CodexLogMonitor(makeConfig(tmpDir), () => {}, (record, metadata) => {
+      if (record.payload?.type !== "token_count") return;
+      assert.strictEqual(metadata.sessionId, EXPECTED_SID);
+      done();
+    });
+    monitor.start();
+  });
 });

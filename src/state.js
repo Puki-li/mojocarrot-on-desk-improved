@@ -130,6 +130,31 @@ const STATE_LABEL_KEY = {
   idle: "sessionIdle", sleeping: "sessionSleeping",
 };
 
+function deriveActivityState(state, event) {
+  if (event === "event_msg:task_complete") return "completed";
+  if (event === "PermissionRequest" || event === "Elicitation" || state === "notification") return "waiting";
+  if (state === "error") return "error";
+  if (state === "attention") return "completed";
+  if (state === "working" || state === "juggling" || state === "carrying" || state === "sweeping") return "working";
+  if (state === "thinking") return "thinking";
+  if (state === "sleeping") return "sleeping";
+  return "idle";
+}
+
+function notifyActivityChanged(change) {
+  if (typeof ctx.onActivityChanged === "function") ctx.onActivityChanged(change || null);
+}
+
+function settleWaitingSession(sessionId) {
+  const session = sessions.get(sessionId);
+  if (!session || session.activityState !== "waiting") return false;
+  session.activityState = "idle";
+  session.activityUpdatedAt = Date.now();
+  session.lastEvent = "PermissionSettled";
+  notifyActivityChanged({ sessionId, state: "idle", event: "PermissionSettled", agentId: session.agentId });
+  return true;
+}
+
 function setState(newState, svgOverride) {
   if (ctx.doNotDisturb) return;
 
@@ -324,12 +349,12 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
     if (startupRecoveryTimer) { clearTimeout(startupRecoveryTimer); startupRecoveryTimer = null; }
   }
 
-  if (event === "PermissionRequest") {
-    setState("notification");
-    return;
-  }
+  // PermissionRequest is an actionable wait regardless of the state supplied
+  // by an older hook caller. Keep the existing sticky notification animation.
+  if (event === "PermissionRequest") state = "notification";
 
   const existing = sessions.get(sessionId);
+  const preserveCompleted = event === "stale-cleanup" && existing?.activityState === "completed";
   const srcPid = sourcePid || (existing && existing.sourcePid) || null;
   const srcCwd = cwd || (existing && existing.cwd) || "";
   const srcEditor = editor || (existing && existing.editor) || null;
@@ -348,6 +373,7 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
     const endingSession = sessions.get(sessionId);
     sessions.delete(sessionId);
     cleanStaleSessions();
+    notifyActivityChanged({ sessionId, state: "ended", event, agentId: endingSession?.agentId || srcAgentId });
     if (!endingSession || !endingSession.headless) {
       let hasLiveInteractive = false;
       for (const s of sessions.values()) {
@@ -368,7 +394,14 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
     setState(displayState, getSvgOverride(displayState));
     return;
   } else if (state === "attention" || state === "notification" || SLEEP_SEQUENCE.has(state)) {
-    sessions.set(sessionId, { state: "idle", updatedAt: Date.now(), displaySvg: null, ...base });
+    sessions.set(sessionId, {
+      state: "idle", updatedAt: Date.now(), displaySvg: null, ...base,
+      ...(preserveCompleted ? {
+        activityState: existing.activityState,
+        activityUpdatedAt: existing.activityUpdatedAt,
+        lastEvent: existing.lastEvent,
+      } : {}),
+    });
   } else if (ONESHOT_STATES.has(state)) {
     if (existing) {
       existing.updatedAt = Date.now();
@@ -390,7 +423,17 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
       sessions.set(sessionId, { state, updatedAt: Date.now(), displaySvg: ds, ...base });
     }
   }
+  const trackedSession = sessions.get(sessionId);
+  const activityState = preserveCompleted ? "completed" : deriveActivityState(state, event);
+  if (trackedSession) {
+    trackedSession.activityState = activityState;
+    if (!preserveCompleted) {
+      trackedSession.activityUpdatedAt = Date.now();
+      trackedSession.lastEvent = event || null;
+    }
+  }
   cleanStaleSessions();
+  notifyActivityChanged({ sessionId, state: activityState, event, agentId: srcAgentId });
 
   if (ONESHOT_STATES.has(state)) {
     setState(state);
@@ -424,7 +467,7 @@ function cleanStaleSessions() {
           if (!s.headless) removedNonHeadless = true;
           sessions.delete(id); changed = true;
         } else if (s.state !== "idle") {
-          s.state = "idle"; s.displaySvg = null; changed = true;
+          s.state = "idle"; s.activityState = "idle"; s.activityUpdatedAt = now; s.displaySvg = null; changed = true;
         }
       } else if (!s.pidReachable) {
         if (!s.headless) removedNonHeadless = true;
@@ -438,7 +481,7 @@ function cleanStaleSessions() {
         if (!s.headless) removedNonHeadless = true;
         sessions.delete(id); changed = true;
       } else if (s.state === "working" || s.state === "juggling" || s.state === "thinking") {
-        s.state = "idle"; s.displaySvg = null; s.updatedAt = now; changed = true;
+        s.state = "idle"; s.activityState = "idle"; s.activityUpdatedAt = now; s.displaySvg = null; s.updatedAt = now; changed = true;
       }
     }
   }
@@ -461,6 +504,7 @@ function cleanStaleSessions() {
       }
     });
   }
+  notifyActivityChanged(null);
 }
 
 function detectRunningAgentProcesses(callback) {
@@ -629,12 +673,28 @@ function buildSessionSubmenu() {
 }
 
 // ── Do Not Disturb ──
+function handOffPendingPermissionsToTerminal() {
+  for (const perm of [...ctx.pendingPermissions]) {
+    // Codex notifications are informational only and can be dismissed normally.
+    if (perm.isCodexNotify) {
+      ctx.resolvePermissionEntry(perm, "deny", "DND enabled");
+      continue;
+    }
+
+    // Empty 2xx makes no decision and immediately returns control to the
+    // permission prompt that Claude Code already displays in the terminal.
+    if (typeof ctx.handOffPermissionEntry === "function") {
+      ctx.handOffPermissionEntry(perm);
+    }
+  }
+}
+
 function enableDoNotDisturb() {
   if (ctx.doNotDisturb) return;
   ctx.doNotDisturb = true;
   ctx.sendToRenderer("dnd-change", true);
   ctx.sendToHitWin("hit-state-sync", { dndEnabled: true });
-  for (const perm of [...ctx.pendingPermissions]) ctx.resolvePermissionEntry(perm, "deny", "DND enabled");
+  handOffPendingPermissionsToTerminal();
   if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = null; pendingState = null; }
   if (autoReturnTimer) { clearTimeout(autoReturnTimer); autoReturnTimer = null; }
   stopWakePoll();
@@ -645,6 +705,7 @@ function enableDoNotDisturb() {
   }
   ctx.buildContextMenu();
   ctx.buildTrayMenu();
+  notifyActivityChanged({ state: "dnd", enabled: true });
 }
 
 function disableDoNotDisturb() {
@@ -660,6 +721,7 @@ function disableDoNotDisturb() {
   }
   ctx.buildContextMenu();
   ctx.buildTrayMenu();
+  notifyActivityChanged({ state: "dnd", enabled: false });
 }
 
 function startStartupRecovery() {
@@ -690,6 +752,7 @@ return {
   startStaleCleanup, stopStaleCleanup, startWakePoll, stopWakePoll,
   getSvgOverride, cleanStaleSessions, startStartupRecovery,
   detectRunningAgentProcesses, buildSessionSubmenu,
+  settleWaitingSession,
   getCurrentState, getCurrentSvg, getCurrentHitBox, getStartupRecoveryActive,
   sessions, STATE_SVGS, STATE_PRIORITY, ONESHOT_STATES, SLEEP_SEQUENCE,
   HIT_BOXES, WIDE_SVGS,
