@@ -31,7 +31,7 @@
 - **角色化动画状态** — 待机、思考、打字、建造、杂耍、指挥、报错、开心、通知、扫地、搬运、睡觉，以及对应的 mini 模式与点击反应，均已调整为 Mojocarrot 版本
 - **眼球追踪** — 待机状态下 Mojocarrot 跟随鼠标，身体微倾，影子拉伸
 - **睡眠序列** — 60 秒无活动 → 打哈欠 → 打盹 → 倒下 → 睡觉；移动鼠标触发惊醒弹起动画
-- **点击反应** — 双击戳戳，连点 4 下东张西望
+- **点击反应** — 脸部双击触发张望或 annoyed，快速四击随机触发水果小队、惊跳或变身
 - **任意状态拖拽** — 随时抓起 Mojocarrot（Pointer Capture 防止快甩丢失），松手恢复当前动画
 - **极简模式** — 拖到右边缘或右键"极简模式"；Mojocarrot 藏在屏幕边缘，悬停探头，通知/完成有迷你动画，抛物线跳跃过渡
 
@@ -177,7 +177,7 @@ Host my-server
 | **Copilot CLI：需手动配置 hooks** | Copilot 需要手动创建 `~/.copilot/hooks/hooks.json`。Claude Code 和 Codex 开箱即用。 |
 | **Copilot CLI：无权限气泡** | Copilot 的 `preToolUse` 只支持拒绝，无法做完整的允许/拒绝审批流。权限气泡仅支持 Claude Code。 |
 | **macOS/Linux 自动更新** | macOS 无 Apple 代码签名，Linux 不支持自动更新，均需从 GitHub Releases 手动下载。 |
-| **Electron 主进程无自动化测试** | 单元测试覆盖了 agent 配置和日志轮询，但状态机、窗口管理、托盘等 Electron 逻辑暂无自动化测试。 |
+| **Electron 窗口行为仍需手动测试** | 单元测试已覆盖 agent、日志轮询和状态机关键行为；透明窗口、托盘、跨平台聚焦等系统集成仍需手动验证。 |
 
 ## 致谢
 

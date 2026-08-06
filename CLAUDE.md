@@ -36,7 +36,7 @@ bash test-bubble.sh    # 发送模拟权限请求测试气泡堆叠
 bash test-macos.sh     # macOS 适配测试（需先 npm start）
 ```
 
-单元测试覆盖 agents/、hook 注册和端口发现逻辑（`test/registry.test.js`、`test/codex-log-monitor.test.js`、`test/install.test.js`、`test/server-config.test.js`），使用 Node.js 内置 test runner。Electron 主进程（状态机、窗口、托盘）无自动化测试，依赖手动 + shell 脚本验证。
+单元测试使用 Node.js 内置 test runner，覆盖 agents/、Codex 日志轮询、hook 注册、端口发现、状态机关键行为、几何与点击判定、素材结构和仓库入口完整性。Electron 窗口生命周期、托盘和跨平台焦点行为仍依赖手动 + shell 脚本验证。
 
 ## 架构与数据流
 
@@ -134,8 +134,8 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 
 - **多会话追踪**：`sessions` Map 按 session_id 独立记录状态，`resolveDisplayState()` 取最高优先级
 - **状态优先级**：error(8) > notification(7) > sweeping(6) > attention(5) > carrying/juggling(4) > working(3) > thinking(2) > idle(1) > sleeping(0)
-- **最小显示时长**：防止快速闪切（error 5s、attention/notification 4s、carrying 3s、sweeping 2s、working/thinking 1s）
-- **单次性状态**：attention/error/sweeping/notification/carrying 显示后自动回退（AUTO_RETURN_MS）
+- **最小显示时长**：防止快速闪切（error 5s、attention 4s、carrying 3s、sweeping 5.5s、working/thinking 1s）
+- **单次性状态**：attention/error/carrying 按动画时长自动回退；sweeping 最长保留 5 分钟；notification 立即显示并保持到下一次会话事件
 - **睡眠序列**：20s 鼠标静止 → idle-look → 60s → yawning(3s) → dozing → 10min → collapsing(0.8s) → sleeping；鼠标移动触发 waking(1.5s) → 恢复
 - **DND 模式**：右键菜单 / 托盘"休眠（免打扰）"→ 跳过 dozing 直接 yawning → collapsing → sleeping，屏蔽所有 hook 事件；唤醒后播放 waking 动画
 - **working 子动画**：1 个会话 → typing，2 个 → juggling，3+ → building
@@ -181,8 +181,8 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 
 ### 点击反应系统（hit-renderer.js 检测 → main relay → renderer.js 播放）
 
-- 双击 → 戳反应（左/右方向检测，2.5s，react-left/react-right SVG）
-- 4 连击 → 双手拍反应（3.5s，react-double SVG）
+- 脸部 2 连击 → 随机播放 annoyed 或左/右张望反应
+- 脸部 4 连击 → 随机播放水果小队、惊跳或青苹果变身（6s）
 - 拖拽 → 拖拽反应（持续到松手）
 - 拖拽判定：鼠标位移 > 3px（DRAG_THRESHOLD），否则视为点击
 - 输入检测在 hitWin，反应动画在 renderWin，通过 main IPC relay
@@ -246,7 +246,7 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 
 ## 素材规则
 
-- 项目使用的 SVG 在 `assets/svg/`（36 个，含 8 个 mini mode），GIF 在 `assets/gif/`（文档展示用）
+- 项目运行时 SVG 在 `assets/svg/` 根目录（39 个，含 8 个 mini mode），GIF 在 `assets/gif/`（文档展示用）
 - 需要编辑的素材复制到 `assets/source/` 再修改
 - SVG 用 `<object type="image/svg+xml">` 渲染——因为需要访问 SVG 内部 DOM（眼球追踪），`<img>` 无法做到
 - SVG 内部约定 ID：`#eyes-js`（眼球）、`#body-js`（身体）、`#shadow-js`（影子）供 JS 操作
