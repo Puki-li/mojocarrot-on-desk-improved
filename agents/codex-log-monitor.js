@@ -5,6 +5,7 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { resolveCodexEventState } = require("../hooks/codex-event-map");
 
 const APPROVAL_HEURISTIC_MS = 2000;
 
@@ -176,31 +177,19 @@ class CodexLogMonitor {
       }
     }
 
-    // Look up state mapping
-    const map = this._config.logEventMap;
-    const state = map[key];
-    if (state === undefined) return; // unmapped event, skip
-    if (state === null) return; // explicitly ignored
+    const mappedState = this._config.logEventMap[key];
+    if (mappedState === undefined || mappedState === null) return;
+    const state = resolveCodexEventState(key, tracked);
 
-    // Track tool use per turn — reset on task_started, set on function_call
-    if (key === "event_msg:task_started") {
-      tracked.hadToolUse = false;
-    }
-    if (key === "response_item:function_call") {
-      tracked.hadToolUse = true;
-    }
-
-    // Turn-end: happy if tools were used this turn, idle otherwise
-    if (state === "codex-turn-end") {
+    // Turn-end: happy if tools were used this turn, idle otherwise.
+    if (mappedState === "codex-turn-end") {
       if (tracked.approvalTimer) {
         clearTimeout(tracked.approvalTimer);
         tracked.approvalTimer = null;
       }
-      const resolved = tracked.hadToolUse ? "attention" : "idle";
-      tracked.hadToolUse = false;
-      tracked.lastState = resolved;
+      tracked.lastState = state;
       tracked.lastEventTime = Date.now();
-      this._onStateChange(tracked.sessionId, resolved, key, {
+      this._onStateChange(tracked.sessionId, state, key, {
         cwd: tracked.cwd,
         sourcePid: null,
         agentPid: null,

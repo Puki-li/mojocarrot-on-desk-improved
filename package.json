@@ -5,7 +5,6 @@
   "main": "src/main.js",
   "scripts": {
     "start": "node launch.js",
-    "generate:mojocarrot": "node scripts/generate-mojocarrot-svgs.js",
     "generate:gifs": "electron scripts/generate-readme-gifs.js",
     "build": "electron-builder --win",
     "build:mac": "electron-builder --mac",

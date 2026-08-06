@@ -152,6 +152,27 @@ describe("CodexLogMonitor", () => {
     monitor.start();
   });
 
+  it("should count web searches as tool activity at task completion", (_, done) => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    fs.writeFileSync(testFile, [
+      '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
+      '{"type":"response_item","payload":{"type":"web_search_call"}}',
+      '{"type":"event_msg","payload":{"type":"task_complete"}}',
+    ].join("\n") + "\n");
+
+    const config = makeConfig(tmpDir);
+    const states = [];
+    monitor = new CodexLogMonitor(config, (sid, state) => {
+      states.push(state);
+      if (state === "attention") {
+        assert.deepStrictEqual(states, ["idle", "thinking", "working", "attention"]);
+        done();
+      }
+    });
+    monitor.start();
+  });
+
   it("should map turn_aborted to idle", (_, done) => {
     const testFile = path.join(dateDir, TEST_FILENAME);
     fs.writeFileSync(testFile, [

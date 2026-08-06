@@ -814,10 +814,6 @@ const _mini = require("./mini")(_miniCtx);
 const { enterMiniMode, exitMiniMode, enterMiniViaMenu, miniPeekIn, miniPeekOut,
         checkMiniModeSnap, cancelMiniTransition, animateWindowX, animateWindowParabola } = _mini;
 
-// Convenience getters for mini state (used throughout main.js)
-Object.defineProperties(this || {}, {}); // no-op placeholder
-// Mini state is accessed via _mini getters in ctx objects below
-
 // ── Auto-install VS Code / Cursor terminal-focus extension ──
 const EXT_ID = "clawd.clawd-terminal-focus";
 const EXT_VERSION = "0.1.0";
@@ -905,7 +901,7 @@ if (!gotTheLock) {
     // Start Codex CLI JSONL log monitor
     try {
       const CodexLogMonitor = require("../agents/codex-log-monitor");
-      const codexAgent = require("../agents/codex");
+      const codexAgent = require("../agents/registry").getAgent("codex");
       _codexMonitor = new CodexLogMonitor(codexAgent, (sid, state, event, extra) => {
         if (state === "codex-permission") {
           updateSession(sid, "notification", event, null, extra.cwd, null, null, null, "codex");

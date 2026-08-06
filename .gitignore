@@ -26,5 +26,7 @@ docs/
 logs/
 
 # GIF recording tools (not part of main project)
-scripts/
+scripts/*
+!scripts/generate-readme-gifs.js
+!scripts/generate-readme-gifs-lib.js
 !scripts/remote-deploy.sh

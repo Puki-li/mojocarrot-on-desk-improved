@@ -18,26 +18,12 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { postStateToRunningServer, readHostPrefix } = require("./server-config");
+const { LOG_EVENT_MAP, resolveCodexEventState } = require("./codex-event-map");
 
 // ── Inline config from agents/codex.js (zero-dependency requirement) ──
 
 const SESSION_DIR = path.join(os.homedir(), ".codex", "sessions");
 const POLL_INTERVAL_MS = 1500;
-
-// JSONL record type[:subtype] → pet state
-// ⚠️ Duplicated from agents/codex.js logEventMap (zero-dep requirement) — keep in sync
-const LOG_EVENT_MAP = {
-  "session_meta": "idle",
-  "event_msg:task_started": "thinking",
-  "event_msg:user_message": "thinking",
-  "event_msg:agent_message": "working",
-  "response_item:function_call": "working",
-  "response_item:custom_tool_call": "working",
-  "response_item:web_search_call": "working",
-  "event_msg:task_complete": "attention",
-  "event_msg:context_compacted": "sweeping",
-  "event_msg:turn_aborted": "idle",
-};
 
 // ── CLI args ──
 
@@ -112,8 +98,9 @@ function processLine(line, entry) {
     entry.cwd = payload.cwd || "";
   }
 
-  const state = LOG_EVENT_MAP[key];
-  if (state === undefined || state === null) return;
+  const mappedState = LOG_EVENT_MAP[key];
+  if (mappedState === undefined || mappedState === null) return;
+  const state = resolveCodexEventState(key, entry);
 
   // Avoid spamming same state
   if (state === entry.lastState && state === "working") return;
@@ -142,6 +129,7 @@ function pollFile(filePath, fileName) {
       lastEventTime: Date.now(),
       lastState: null,
       partial: "",
+      hadToolUse: false,
     };
     tracked.set(filePath, entry);
   }
