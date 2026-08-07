@@ -250,8 +250,9 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 
 ## 素材规则
 
-- 项目运行时 SVG 在 `assets/svg/` 根目录（39 个，含 8 个 mini mode），GIF 在 `assets/gif/`（文档展示用）
-- 需要编辑的素材复制到 `assets/source/` 再修改
+- 项目运行时 SVG 只放在 `assets/svg/` 根目录（39 个，含 8 个 mini mode），GIF 在 `assets/gif/` 且仅用于 README / gallery 展示
+- 历史版本、旧命名副本和原版参考不放在运行素材目录；需要回溯时使用 Git 历史，临时编辑文件放到仓库外
+- `npm run generate:gifs` 只生成当前文档实际使用的预览名称，新增预览时同步补充 README 或 gallery 引用
 - SVG 用 `<object type="image/svg+xml">` 渲染——因为需要访问 SVG 内部 DOM（眼球追踪），`<img>` 无法做到
 - SVG 内部约定 ID：`#eyes-js`（眼球）、`#body-js`（身体）、`#shadow-js`（影子）供 JS 操作
 

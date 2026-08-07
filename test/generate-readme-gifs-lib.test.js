@@ -13,6 +13,26 @@ describe("generate readme gifs lib", () => {
     assert.strictEqual(spec.scene, "idle-follow-demo");
   });
 
+  it("does not regenerate unused legacy preview names", () => {
+    const names = new Set(buildGifSpecs().map((entry) => entry.gif));
+
+    for (const unused of [
+      "clawd-idle.gif",
+      "clawd-debugger.gif",
+      "clawd-thinking.gif",
+      "clawd-typing.gif",
+      "clawd-building.gif",
+      "clawd-juggling.gif",
+      "clawd-conducting.gif",
+      "clawd-sweeping.gif",
+      "clawd-carrying.gif",
+      "clawd-collapse-sleep.gif",
+      "clawd-idle-doze.gif",
+    ]) {
+      assert.strictEqual(names.has(unused), false, unused);
+    }
+  });
+
   it("builds a scripted capture scene for the idle-follow demo gif", () => {
     const html = buildCaptureHtml({
       gif: "clawd-idle-follow-demo.gif",

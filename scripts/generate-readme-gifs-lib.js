@@ -6,6 +6,8 @@ const ROOT = path.resolve(__dirname, "..");
 const SVG_DIR = path.join(ROOT, "assets", "svg");
 
 const SVG_EXCLUDES = new Set([
+  "clawd-collapse-sleep.svg",
+  "clawd-idle-doze.svg",
   "clawd-static-base.svg",
   "clawd-working-ultrathink.svg",
   "clawd-working-wizard.svg",
@@ -49,18 +51,6 @@ const SVG_OVERRIDES = {
   "clawd-mini-sleep.svg": { durationMs: 3600, fps: 12, size: 220, scale: 0.92 },
 };
 
-const GIF_ALIASES = {
-  "clawd-idle.gif": "clawd-idle-follow.svg",
-  "clawd-debugger.gif": "clawd-working-debugger.svg",
-  "clawd-thinking.gif": "clawd-working-thinking.svg",
-  "clawd-typing.gif": "clawd-working-typing.svg",
-  "clawd-building.gif": "clawd-working-building.svg",
-  "clawd-juggling.gif": "clawd-working-juggling.svg",
-  "clawd-conducting.gif": "clawd-working-conducting.svg",
-  "clawd-sweeping.gif": "clawd-working-sweeping.svg",
-  "clawd-carrying.gif": "clawd-working-carrying.svg",
-};
-
 function defaultSpecForSvg(svg) {
   if (svg.startsWith("clawd-mini-")) {
     return { durationMs: 2600, fps: 12, size: 220, scale: 0.92 };
@@ -90,9 +80,6 @@ function buildGifSpecs() {
 
   for (const svg of svgs) {
     pushSpec(svg.replace(/\.svg$/i, ".gif"), svg);
-  }
-  for (const [gif, svg] of Object.entries(GIF_ALIASES)) {
-    pushSpec(gif, svg);
   }
   pushSpec("clawd-idle-follow-demo.gif", "clawd-idle-follow.svg", {
     scene: "idle-follow-demo",
