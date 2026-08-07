@@ -5,15 +5,26 @@
 <p align="center">
   <a href="README.md">English</a>
 </p>
+<p align="center">
+  <a href="https://github.com/Puki-li/mojocarrot-on-desk-improved/actions/workflows/test.yml"><img src="https://github.com/Puki-li/mojocarrot-on-desk-improved/actions/workflows/test.yml/badge.svg" alt="Test"></a>
+  <img src="https://img.shields.io/badge/version-1.0.0-2ea44f" alt="Version 1.0.0">
+</p>
 
-一个能实时感知 AI 编程助手工作状态的桌面宠物。这个项目基于公开仓库 [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk) 改造而来，当前这个分支将其对外形态调整为 **Mojocarrot on Desk**：保留原项目的多 Agent 运行机制，同时把屏幕上的主角色替换为 **给 WMLS 们的 Mojocarrot**，并针对新角色重做了大量场景表演和动画节奏。
+一个能实时感知 AI 编程助手工作状态的桌面宠物。项目基于公开仓库 [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk) 改造而来，保留原项目的多 Agent 运行机制，同时把屏幕上的主角色替换为 **给 WMLS 们的 Mojocarrot**，并在 v1.0.0 中加入统一活跃状态、Codex 额度与更准确的会话识别。
 
 > 支持 Windows 11、macOS 和 Ubuntu/Linux。需要 Node.js。支持 **Claude Code**、**Codex CLI**、**Copilot CLI**、**Gemini CLI** 与 **Cursor Agent**。
 
 ## 功能特性
 
+### v1.0.0 重点更新
+- **统一活跃中心** — 常驻状态条集中展示 Codex、Claude Code、Cursor、Copilot 与 Gemini，点击即可打开活跃会话面板
+- **Codex 周额度** — 直接查看剩余比例，以及本地日期、周几、时间和重置说明
+- **更准确的工具归属** — 合并重复的 Claude 兼容事件，忽略 Codex 子 Agent rollout，避免历史日志回放和过早完成
+- **长任务稳定性** — 增量读取日志并发送心跳，长时间 Codex 任务不会误空闲，也不会阻塞 Electron 主进程
+- **更安全的本地 Hook** — 增加本地鉴权、限流、超时处理、私有令牌权限和安全的免打扰权限回退
+
 ### Mojocarrot 角色分支
-- **给 WMLS 们的 Mojocarrot** — 当前分支已将默认主角色替换为 Mojocarrot，但保留原项目的多 Agent、权限气泡、极简模式和会话状态机
+- **给 WMLS 们的 Mojocarrot** — 将默认主角色替换为 Mojocarrot，同时保留原项目的多 Agent、权限气泡、极简模式和会话状态机
 - **基于原版重新编排动画** — 很多场景仍参考原版 Clawd 的母版节奏，但表情、道具、前景特效、点击反应和 mini 模式都已经按 Mojocarrot 重新设计
 - **分层角色资源** — Mojocarrot 使用身体、叶子、眼睛、嘴巴、睡姿等拆分资源，而不是单张扁平贴图，便于做眼球追踪、睡眠过渡和场景化脸部处理
 - **原项目 credit** — 当前分支沿用了原版 `clawd-on-desk` 的运行时架构、hook 模型和桌宠工作流，这里主要改的是 Mojocarrot 角色资源、动画节奏和对外展示
@@ -22,8 +33,8 @@
 - **Claude Code** — 通过 command hook + HTTP 权限 hook 完整集成
 - **Codex CLI** — 自动轮询 JSONL 日志（`~/.codex/sessions/`），无需配置
 - **Copilot CLI** — 通过 `~/.copilot/hooks/hooks.json` 配置 command hook
-- **Gemini CLI** — 通过 `~/.gemini/settings.json` 配置 command hook（Clawd 启动时自动注册，或执行 `npm run install:gemini-hooks`）
-- **Cursor Agent** — [Cursor IDE hooks](https://cursor.com/docs/agent/hooks)，配置在 `~/.cursor/hooks.json`（Clawd 启动时自动注册，或执行 `npm run install:cursor-hooks`）
+- **Gemini CLI** — 通过 `~/.gemini/settings.json` 配置 command hook（Mojocarrot 启动时自动注册，或执行 `npm run install:gemini-hooks`）
+- **Cursor Agent** — [Cursor IDE hooks](https://cursor.com/docs/agent/hooks)，配置在 `~/.cursor/hooks.json`（Mojocarrot 启动时自动注册，或执行 `npm run install:cursor-hooks`）
 - **多 Agent 共存** — 多个 Agent 可同时运行，Mojocarrot 独立追踪每个会话
 
 ### 动画与交互
@@ -44,7 +55,7 @@
 ### 会话智能
 - **多会话追踪** — Codex、Claude Code、Cursor、Copilot 与 Gemini 的多个会话独立追踪，并解析到最高优先级状态
 - **常驻活跃状态条** — 始终显示 `Idle`、`DND` 或当前主导 Agent；存在其他活跃会话时追加 `+N`，点击后打开活跃会话面板
-- **活跃会话面板** — 集中查看各 Agent 会话；已完成会话继续保留 10 分钟，便于确认刚刚由哪个工具完成
+- **活跃会话面板** — 集中查看各 Agent 会话；本轮完成记录保留 5 分钟，同一工具和项目的重复完成记录自动合并
 - **Codex 周额度** — 在活跃会话面板重点显示周额度剩余百分比，并标注本地日期、周几、时间和重置说明
 - **重要状态卡** — 等待输入、报错、完成，以及 Codex 周额度剩余 20%/10% 时按优先级只展示一张提醒卡
 - **子代理感知** — 1 个子代理杂耍，2 个以上指挥
@@ -61,6 +72,7 @@
 - **系统托盘** — 调大小（S/M/L）、免打扰、语言切换、开机自启、检查更新
 - **国际化** — 支持英文和中文界面，右键菜单或托盘切换
 - **自动更新** — 检查 GitHub release；Windows 退出时安装 NSIS 更新包，macOS 打开 release 页面，Linux 需手动下载
+- **本地服务鉴权** — 状态和权限请求使用仅当前用户可读的本地令牌，异常、过量和超时请求会被安全拒绝
 
 ## 状态映射
 
@@ -113,8 +125,8 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/lukelei2025/mojocarrot-on-desk.git
-cd mojocarrot-on-desk
+git clone https://github.com/Puki-li/mojocarrot-on-desk-improved.git
+cd mojocarrot-on-desk-improved
 
 # 安装依赖
 npm install
@@ -124,6 +136,18 @@ npm start
 ```
 
 现在这个仓库已经可以按一个独立的 Mojocarrot 项目直接安装和运行，不需要先安装上游 `clawd-on-desk` 再覆盖资源。
+
+### Agent 配置
+
+**Claude Code** — 启动时自动注册核心 command hook 与 HTTP 权限 hook；仅在明确检测到兼容版本时注册版本相关 hook。
+
+**Codex CLI** — 开箱即用。Mojocarrot 在启动时异步恢复一次 `~/.codex/sessions/` 本地日志，之后约每 1.5 秒增量检查新记录。活跃状态和周额度均来自本地日志，不需要 OpenAI 凭证。
+
+**Gemini CLI** — 启动时自动注册，也可执行 `npm run install:gemini-hooks` 手动安装。
+
+**Cursor Agent** — 启动时自动注册，也可执行 `npm run install:cursor-hooks` 手动安装。
+
+**Copilot CLI** — 需要手动创建 `~/.copilot/hooks/hooks.json`，当前权限支持情况见下方“已知限制”。
 
 ### 远程 SSH 模式（Claude Code & Codex CLI）
 
@@ -170,7 +194,7 @@ Host my-server
 ### Linux 说明
 
 - **源码运行**（`npm start`）：自动传入 `--no-sandbox` 参数，跳过 chrome-sandbox SUID 校验。
-- **安装包**：AppImage 和 `.deb` 可从 [GitHub Releases](https://github.com/lukelei2025/mojocarrot-on-desk/releases) 下载。deb 安装后应用图标会出现在 GNOME 应用菜单。
+- **安装包**：AppImage 和 `.deb` 可从 [GitHub Releases](https://github.com/Puki-li/mojocarrot-on-desk-improved/releases) 下载。deb 安装后应用图标会出现在 GNOME 应用菜单。
 - **终端聚焦**：依赖 `wmctrl` 或 `xdotool`（有一个就行）。安装：`sudo apt install wmctrl` 或 `sudo apt install xdotool`。
 - **自动更新**：Linux 暂不支持自动更新，请从 GitHub Releases 手动下载新版本。
 

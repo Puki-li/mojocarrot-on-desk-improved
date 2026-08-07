@@ -5,15 +5,26 @@
 <p align="center">
   <a href="README.zh-CN.md">中文版</a>
 </p>
+<p align="center">
+  <a href="https://github.com/Puki-li/mojocarrot-on-desk-improved/actions/workflows/test.yml"><img src="https://github.com/Puki-li/mojocarrot-on-desk-improved/actions/workflows/test.yml/badge.svg" alt="Test"></a>
+  <img src="https://img.shields.io/badge/version-1.0.0-2ea44f" alt="Version 1.0.0">
+</p>
 
-A desktop pet that reacts to your AI coding agent sessions in real-time. This project is a Mojocarrot-themed derivative of the public repository [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk), adapted into **Mojocarrot on Desk** for WMLS with reworked scene choreography and character-specific animation tuning.
+A desktop pet that reacts to your AI coding agent sessions in real-time. This repository maintains a Mojocarrot-themed derivative of the public project [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk), adapted into **Mojocarrot on Desk** for WMLS with reworked scene choreography, multi-agent activity tracking, and Codex-focused tooling.
 
 > Supports Windows 11, macOS, and Ubuntu/Linux. Requires Node.js. Works with **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, and **Cursor Agent**.
 
 ## Features
 
+### What's New in v1.0.0
+- **Unified activity center** — an always-visible status pill opens a panel for Codex, Claude Code, Cursor, Copilot, and Gemini sessions
+- **Codex weekly quota** — see the remaining percentage and local reset date, weekday, and time without opening a separate tool
+- **More accurate attribution** — mirrored Claude-compatible events, Codex subagent rollouts, historical log replay, and premature completion signals are filtered or reconciled
+- **Long-task stability** — incremental log reads and heartbeats keep long Codex turns active without blocking Electron's main process
+- **Safer local hooks** — authenticated loopback requests, request limits, timeout handling, private token files, and safer DND permission fallback
+
 ### Mojocarrot Variant
-- **Mojocarrot for WMLS** — this branch replaces the default on-screen character with Mojocarrot while keeping the original multi-agent runtime, permission bubble flow, mini mode, and session logic
+- **Mojocarrot for WMLS** — replaces the default on-screen character with Mojocarrot while keeping the original multi-agent runtime, permission bubble flow, mini mode, and session logic
 - **Retuned animation language** — many scenes now reuse the original Clawd timing as a mother asset, but the acting, face layering, props, and overlays are adjusted for Mojocarrot
 - **Layered character assets** — Mojocarrot uses split body / leaves / eyes / mouth / sleep assets instead of a single flat sprite, which makes cursor tracking, sleep transitions, and scene-specific face handling more controllable
 - **Credit to the original project** — the runtime architecture, hook model, and core desktop-pet workflow come from the original public `clawd-on-desk` project, while this branch focuses on Mojocarrot-specific assets, animation retiming, and presentation
@@ -22,12 +33,12 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. This pr
 - **Claude Code** — full integration via command hooks + HTTP permission hooks
 - **Codex CLI** — automatic JSONL log polling (`~/.codex/sessions/`), no configuration needed
 - **Copilot CLI** — command hooks via `~/.copilot/hooks/hooks.json`
-- **Gemini CLI** — command hooks via `~/.gemini/settings.json` (registered automatically when Clawd starts, or run `npm run install:gemini-hooks`)
-- **Cursor Agent** — [Cursor IDE hooks](https://cursor.com/docs/agent/hooks) in `~/.cursor/hooks.json` (registered automatically when Clawd starts, or run `npm run install:cursor-hooks`)
+- **Gemini CLI** — command hooks via `~/.gemini/settings.json` (registered automatically when Mojocarrot starts, or run `npm run install:gemini-hooks`)
+- **Cursor Agent** — [Cursor IDE hooks](https://cursor.com/docs/agent/hooks) in `~/.cursor/hooks.json` (registered automatically when Mojocarrot starts, or run `npm run install:cursor-hooks`)
 - **Multi-agent coexistence** — run all agents simultaneously; Mojocarrot tracks each session independently
 
 ### Animations & Interaction
-- **Real-time state awareness** — agent hooks and log polling drive Clawd's animations automatically
+- **Real-time state awareness** — agent hooks and log polling drive Mojocarrot's animations automatically
 - **Character-specific animation set** — idle, thinking, typing, building, juggling, conducting, error, happy, notification, sweeping, carrying, sleeping, plus mini-mode and click-reaction variants retuned for Mojocarrot
 - **Eye tracking** — Mojocarrot follows your cursor in idle state, with body lean and shadow stretch
 - **Sleep sequence** — yawning, dozing, collapsing, sleeping after 60s idle; mouse movement triggers a startled wake-up animation
@@ -53,7 +64,7 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. This pr
 - **Startup recovery** — if Mojocarrot on Desk restarts while any agent is running, it stays awake instead of falling asleep
 
 ### System
-- **Click-through** — transparent areas pass clicks to windows below; only Clawd's body is interactive
+- **Click-through** — transparent areas pass clicks to windows below; only Mojocarrot's body is interactive
 - **Position memory** — Mojocarrot remembers where you left it across restarts (including mini mode)
 - **Single instance lock** — prevents duplicate app windows
 - **Auto-start** — Claude Code's SessionStart hook can launch Mojocarrot on Desk automatically if it's not running
@@ -61,6 +72,7 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. This pr
 - **System tray** — resize (S/M/L), DND mode, language switch, auto-start, check for updates
 - **i18n** — English and Chinese UI; switch via right-click menu or tray
 - **Auto-update** — checks GitHub releases; Windows installs NSIS updates on quit, macOS opens the release page, Linux requires manual download
+- **Authenticated local service** — state and permission requests use a private local token; malformed, excessive, and timed-out requests are rejected safely
 
 ## State Mapping
 
@@ -115,8 +127,8 @@ Current Mojocarrot reactions are face-zone based:
 
 ```bash
 # Clone the repo
-git clone https://github.com/lukelei2025/mojocarrot-on-desk.git
-cd mojocarrot-on-desk
+git clone https://github.com/Puki-li/mojocarrot-on-desk-improved.git
+cd mojocarrot-on-desk-improved
 
 # Install dependencies
 npm install
@@ -131,9 +143,13 @@ For a fresh local install, this repository can now be treated as a standalone Mo
 
 **Claude Code** — works out of the box. Hooks are auto-registered on launch. Versioned hooks (`PreCompact`, `PostCompact`, `StopFailure`) are registered only when the app can positively detect a compatible Claude Code version; if detection fails (common for packaged macOS launches), it falls back to core hooks and removes stale incompatible versioned hooks automatically.
 
-**Codex CLI** — works out of the box. Mojocarrot on Desk polls `~/.codex/sessions/` for JSONL logs automatically.
+**Codex CLI** — works out of the box. Mojocarrot on Desk reads `~/.codex/sessions/` locally: one asynchronous startup recovery scan, then incremental log checks at roughly 1.5-second intervals. Activity and weekly quota data stay local and do not require OpenAI credentials.
 
-**Copilot CLI** — requires manual hook setup. See [docs/copilot-setup.md](docs/copilot-setup.md) for instructions.
+**Gemini CLI** — hooks are registered automatically on launch, or manually with `npm run install:gemini-hooks`.
+
+**Cursor Agent** — hooks are registered automatically on launch, or manually with `npm run install:cursor-hooks`.
+
+**Copilot CLI** — requires manually creating `~/.copilot/hooks/hooks.json`; see the limitations below for current permission support.
 
 ### Remote SSH (Claude Code & Codex CLI)
 
@@ -180,7 +196,7 @@ State and permission POSTs are authenticated. For remote use, provision the valu
 ### Linux Notes
 
 - **From source** (`npm start`): `--no-sandbox` is passed automatically to work around chrome-sandbox SUID requirements in dev mode.
-- **Packages**: AppImage and `.deb` are available from [GitHub Releases](https://github.com/lukelei2025/mojocarrot-on-desk/releases). After deb install, the app icon appears in GNOME's app menu.
+- **Packages**: AppImage and `.deb` are available from [GitHub Releases](https://github.com/Puki-li/mojocarrot-on-desk-improved/releases). After deb install, the app icon appears in GNOME's app menu.
 - **Terminal focus**: uses `wmctrl` or `xdotool` (whichever is available). Install one for session terminal jumping to work: `sudo apt install wmctrl` or `sudo apt install xdotool`.
 - **Auto-update**: not available on Linux — download new versions manually from GitHub Releases.
 
