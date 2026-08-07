@@ -24,7 +24,12 @@ function makeTempSessionDir() {
 function makeConfig(tmpDir) {
   return {
     ...codexConfig,
-    logConfig: { ...codexConfig.logConfig, sessionDir: tmpDir, pollIntervalMs: 100 },
+    logConfig: {
+      ...codexConfig.logConfig,
+      sessionDir: tmpDir,
+      pollIntervalMs: 100,
+      recoverExistingFiles: false,
+    },
   };
 }
 
@@ -193,7 +198,7 @@ describe("CodexLogMonitor", () => {
     monitor.start();
   });
 
-  it("should dedup repeated working states", (_, done) => {
+  it("should refresh activity for repeated working states", (_, done) => {
     const testFile = path.join(dateDir, TEST_FILENAME);
     fs.writeFileSync(testFile, [
       '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
@@ -209,12 +214,57 @@ describe("CodexLogMonitor", () => {
     monitor = new CodexLogMonitor(config, (sid, state) => {
       states.push(state);
       if (state === "attention") {
-        // idle, thinking, working (deduped), attention — should be 4 not 6
-        assert.deepStrictEqual(states, ["idle", "thinking", "working", "attention"]);
+        assert.deepStrictEqual(states, ["idle", "thinking", "working", "working", "working", "attention"]);
         done();
       }
     });
     monitor.start();
+  });
+
+  it("should ignore Codex subagent rollouts", (_, done) => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    fs.writeFileSync(testFile, [
+      JSON.stringify({
+        type: "session_meta",
+        payload: { cwd: "/tmp", thread_source: "subagent", source: { subagent: {} } },
+      }),
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
+      '{"type":"event_msg","payload":{"type":"task_complete"}}',
+    ].join("\n") + "\n");
+
+    const config = makeConfig(tmpDir);
+    const states = [];
+    monitor = new CodexLogMonitor(config, (_sid, state) => states.push(state));
+    monitor.start();
+
+    setTimeout(() => {
+      assert.deepStrictEqual(states, []);
+      done();
+    }, 300);
+  });
+
+  it("should recover only the final active state from existing logs", (_, done) => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    fs.writeFileSync(testFile, [
+      '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
+      '{"type":"event_msg","payload":{"type":"task_complete"}}',
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
+      '{"type":"response_item","payload":{"type":"custom_tool_call"}}',
+    ].join("\n") + "\n");
+
+    const config = makeConfig(tmpDir);
+    config.logConfig.recoverExistingFiles = true;
+    const states = [];
+    monitor = new CodexLogMonitor(config, (_sid, state, _event, extra) => {
+      states.push({ state, recovered: extra.recovered === true });
+    });
+    monitor.start();
+
+    setTimeout(() => {
+      assert.deepStrictEqual(states, [{ state: "working", recovered: true }]);
+      done();
+    }, 300);
   });
 
   it("should handle incremental writes (tail behavior)", (_, done) => {

@@ -86,4 +86,28 @@ describe("session activity metadata", () => {
     assert.strictEqual(api.sessions.has("s1"), false);
     assert.ok(changes.some((change) => change?.state === "ended"));
   });
+
+  it("expires inactive hook-based work without treating a resident extension process as active", () => {
+    api = require("../src/state")(makeCtx());
+    api.updateSession("claude", "working", "PostToolUse", null, "/repo", null, null, null, "claude-code");
+    const session = api.sessions.get("claude");
+    session.updatedAt = Date.now() - 90001;
+
+    api.cleanStaleSessions();
+
+    assert.strictEqual(session.state, "idle");
+    assert.strictEqual(session.activityState, "idle");
+  });
+
+  it("keeps a long-running tool active until its post-tool event arrives", () => {
+    api = require("../src/state")(makeCtx());
+    api.updateSession("claude", "working", "PreToolUse", null, "/repo", null, null, null, "claude-code");
+    const session = api.sessions.get("claude");
+    session.updatedAt = Date.now() - 90001;
+
+    api.cleanStaleSessions();
+
+    assert.strictEqual(session.state, "working");
+    assert.strictEqual(session.activityState, "working");
+  });
 });

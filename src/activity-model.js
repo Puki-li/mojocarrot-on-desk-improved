@@ -1,6 +1,6 @@
 "use strict";
 
-const COMPLETED_RETENTION_MS = 10 * 60 * 1000;
+const COMPLETED_RETENTION_MS = 5 * 60 * 1000;
 
 const AGENT_PRESENTATION = Object.freeze({
   codex: { label: "Codex", color: "#2f9e44" },
@@ -21,6 +21,7 @@ const ACTIVITY_PRIORITY = Object.freeze({
 });
 
 const ACTIVE_STATES = new Set(["waiting", "error", "working", "thinking"]);
+const EXECUTING_STATES = new Set(["working", "thinking"]);
 
 function getAgentPresentation(agentId) {
   return AGENT_PRESENTATION[agentId] || {
@@ -87,6 +88,30 @@ function compareSessionViews(a, b) {
   return b.updatedAt - a.updatedAt;
 }
 
+function compareRecentSessions(a, b) {
+  const timeDelta = b.updatedAt - a.updatedAt;
+  if (timeDelta !== 0) return timeDelta;
+  return (ACTIVITY_PRIORITY[b.state] || 0) - (ACTIVITY_PRIORITY[a.state] || 0);
+}
+
+function collapseCompletedSessions(sessionViews) {
+  const completedKeys = new Set();
+  const collapsed = [];
+  for (const session of sessionViews) {
+    if (session.state !== "completed") {
+      collapsed.push(session);
+      continue;
+    }
+    // Active parallel sessions stay independent. Only historical completion
+    // rows from the same agent/project/host are collapsed to the newest one.
+    const key = `${session.agentId || ""}\u0000${session.host || ""}\u0000${session.project}`;
+    if (completedKeys.has(key)) continue;
+    completedKeys.add(key);
+    collapsed.push(session);
+  }
+  return collapsed;
+}
+
 function createQuotaView(quota) {
   if (!quota || typeof quota !== "object") return null;
   return {
@@ -105,11 +130,21 @@ function buildActivitySnapshot({ sessions, doNotDisturb = false, quota = null, n
     sessionViews.push(createSessionView(id, session));
   }
   sessionViews.sort(compareSessionViews);
+  const visibleSessionViews = collapseCompletedSessions(sessionViews);
 
-  const activeSessions = sessionViews.filter(
+  const activeSessions = visibleSessionViews.filter(
     (session) => !session.headless && ACTIVE_STATES.has(session.state)
   );
-  const dominant = activeSessions[0] || null;
+  // The compact pill answers "which agent is working now". Waiting/error
+  // sessions remain prominent in the panel and alert card, but must not hide a
+  // newer executing agent behind an old actionable state.
+  const executingSessions = activeSessions
+    .filter((session) => EXECUTING_STATES.has(session.state))
+    .sort(compareRecentSessions);
+  const attentionSessions = activeSessions
+    .filter((session) => !EXECUTING_STATES.has(session.state))
+    .sort(compareRecentSessions);
+  const dominant = executingSessions[0] || attentionSessions[0] || null;
   const status = doNotDisturb
     ? { mode: "dnd", label: "DND", color: "#64748b", extraCount: 0 }
     : dominant
@@ -124,11 +159,11 @@ function buildActivitySnapshot({ sessions, doNotDisturb = false, quota = null, n
 
   return {
     status,
-    sessions: sessionViews.map((session) => ({
+    sessions: visibleSessionViews.map((session) => ({
       ...session,
       dominant: dominant ? session.id === dominant.id : false,
     })),
-    sessionCount: sessionViews.length,
+    sessionCount: visibleSessionViews.length,
     activeCount: activeSessions.length,
     quota: createQuotaView(quota),
     generatedAt: now,
@@ -140,6 +175,7 @@ module.exports = {
   ACTIVITY_PRIORITY,
   AGENT_PRESENTATION,
   COMPLETED_RETENTION_MS,
+  EXECUTING_STATES,
   buildActivitySnapshot,
   getAgentPresentation,
   getProjectName,

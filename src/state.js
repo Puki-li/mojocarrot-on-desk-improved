@@ -88,6 +88,8 @@ const DISPLAY_HINT_SVGS = new Set([
 const sessions = new Map();
 const SESSION_STALE_MS = 600000;
 const WORKING_STALE_MS = 300000;
+const PASSIVE_HOOK_STALE_MS = 90000;
+const PASSIVE_HOOK_EVENTS = new Set(["PostToolUse", "SubagentStop"]);
 let startupRecoveryActive = false;
 let startupRecoveryTimer = null;
 const STARTUP_RECOVERY_MAX_MS = 300000;
@@ -476,7 +478,7 @@ function cleanStaleSessions() {
         if (!s.headless) removedNonHeadless = true;
         sessions.delete(id); changed = true;
       }
-    } else if (age > WORKING_STALE_MS) {
+    } else if (age > (PASSIVE_HOOK_EVENTS.has(s.lastEvent) ? PASSIVE_HOOK_STALE_MS : WORKING_STALE_MS)) {
       if (s.pidReachable && s.sourcePid && !isProcessAlive(s.sourcePid)) {
         if (!s.headless) removedNonHeadless = true;
         sessions.delete(id); changed = true;

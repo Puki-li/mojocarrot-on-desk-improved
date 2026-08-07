@@ -7,7 +7,8 @@ const {
   positionStatusPill,
 } = require("./activity-geometry");
 
-const STATUS_SIZE = Object.freeze({ width: 196, height: 56 });
+const STATUS_SIZE = Object.freeze({ width: 220, height: 56 });
+const STATUS_MIN_SIZE = Object.freeze({ width: 128, height: 36 });
 const PANEL_DEFAULT_SIZE = Object.freeze({ width: 430, height: 500 });
 const ALERT_SIZE = Object.freeze({ width: 430, height: 150 });
 
@@ -151,8 +152,8 @@ module.exports = function initActivity(ctx) {
       const height = Math.round(Number(nextSize.height));
       if (!Number.isFinite(width) || !Number.isFinite(height)) return;
       statusSize = {
-        width: strictClamp(width, 76, STATUS_SIZE.width),
-        height: strictClamp(height, 36, STATUS_SIZE.height),
+        width: strictClamp(width, STATUS_MIN_SIZE.width, STATUS_SIZE.width),
+        height: strictClamp(height, STATUS_MIN_SIZE.height, STATUS_SIZE.height),
       };
       if (!statusWin.isDestroyed()) statusWin.setSize(statusSize.width, statusSize.height, false);
       reposition();

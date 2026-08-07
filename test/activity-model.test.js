@@ -33,12 +33,12 @@ test("activity snapshot shows DND independently from sessions", () => {
   assert.equal(snapshot.sessionCount, 1);
 });
 
-test("dominant agent uses activity priority and only counts other active sessions", () => {
+test("dominant agent uses the most recent executing session and only counts other active sessions", () => {
   const snapshot = buildActivitySnapshot({
     sessions: sessions([
-      ["codex", { state: "working", agentId: "codex", cwd: "/repo/mojocarrot", updatedAt: 30 }],
+      ["codex", { state: "working", agentId: "codex", cwd: "/repo/mojocarrot", updatedAt: 50 }],
       ["cursor", { state: "thinking", agentId: "cursor-agent", updatedAt: 40 }],
-      ["claude", { state: "idle", activityState: "completed", agentId: "claude-code", updatedAt: 50, activityUpdatedAt: 50 }],
+      ["claude", { state: "idle", activityState: "completed", agentId: "claude-code", updatedAt: 30, activityUpdatedAt: 30 }],
     ]),
     now: 60,
   });
@@ -49,7 +49,7 @@ test("dominant agent uses activity priority and only counts other active session
   assert.equal(snapshot.sessions[0].project, "mojocarrot");
 });
 
-test("all completed sessions leave the status at Idle while remaining visible for ten minutes", () => {
+test("all completed sessions leave the status at Idle while remaining visible for five minutes", () => {
   const now = 100000;
   const snapshot = buildActivitySnapshot({
     sessions: sessions([
@@ -62,7 +62,7 @@ test("all completed sessions leave the status at Idle while remaining visible fo
   assert.equal(snapshot.sessions[0].state, "completed");
 });
 
-test("completed sessions disappear from the panel after ten minutes", () => {
+test("completed sessions disappear from the panel after five minutes", () => {
   const now = 1000000;
   const snapshot = buildActivitySnapshot({
     sessions: sessions([
@@ -79,7 +79,44 @@ test("completed sessions disappear from the panel after ten minutes", () => {
   assert.equal(snapshot.status.label, "Idle");
 });
 
-test("waiting input outranks errors and working sessions", () => {
+test("duplicate completed rows for the same agent and project keep only the latest", () => {
+  const now = 100000;
+  const snapshot = buildActivitySnapshot({
+    sessions: sessions([
+      ["old", {
+        state: "idle",
+        activityState: "completed",
+        agentId: "codex",
+        cwd: "/repo/mojocarrot",
+        activityUpdatedAt: now - 2000,
+      }],
+      ["latest", {
+        state: "idle",
+        activityState: "completed",
+        agentId: "codex",
+        cwd: "/repo/mojocarrot",
+        activityUpdatedAt: now - 1000,
+      }],
+    ]),
+    now,
+  });
+  assert.equal(snapshot.sessionCount, 1);
+  assert.equal(snapshot.sessions[0].id, "latest");
+});
+
+test("parallel active sessions for the same agent and project remain separate", () => {
+  const snapshot = buildActivitySnapshot({
+    sessions: sessions([
+      ["one", { state: "working", agentId: "codex", cwd: "/repo/mojocarrot", updatedAt: 20 }],
+      ["two", { state: "thinking", agentId: "codex", cwd: "/repo/mojocarrot", updatedAt: 30 }],
+    ]),
+    now: 40,
+  });
+  assert.equal(snapshot.sessionCount, 2);
+  assert.equal(snapshot.activeCount, 2);
+});
+
+test("panel keeps important states first while the pill favors an executing agent", () => {
   const snapshot = buildActivitySnapshot({
     sessions: sessions([
       ["working", { state: "working", agentId: "codex", updatedAt: 30 }],
@@ -88,8 +125,19 @@ test("waiting input outranks errors and working sessions", () => {
     ]),
     now: 40,
   });
-  assert.equal(snapshot.status.label, "Claude Code");
+  assert.equal(snapshot.status.label, "Codex");
   assert.deepStrictEqual(snapshot.sessions.map((entry) => entry.id), ["waiting", "error", "working"]);
+});
+
+test("the latest actionable session drives the pill when nothing is executing", () => {
+  const snapshot = buildActivitySnapshot({
+    sessions: sessions([
+      ["error", { state: "idle", activityState: "error", agentId: "cursor-agent", activityUpdatedAt: 20 }],
+      ["waiting", { state: "idle", activityState: "waiting", agentId: "claude-code", activityUpdatedAt: 30 }],
+    ]),
+    now: 40,
+  });
+  assert.equal(snapshot.status.label, "Claude Code");
 });
 
 test("project names support both POSIX and Windows paths", () => {

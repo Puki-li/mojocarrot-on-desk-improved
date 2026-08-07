@@ -8,11 +8,11 @@
   const STATE_LABELS = Object.freeze({
     zh: {
       waiting: "等待输入", error: "出错", working: "工作中", thinking: "思考中",
-      completed: "已完成", idle: "空闲", sleeping: "已结束",
+      completed: "本轮完成", idle: "空闲", sleeping: "已结束",
     },
     en: {
       waiting: "Waiting", error: "Error", working: "Working", thinking: "Thinking",
-      completed: "Completed", idle: "Idle", sleeping: "Ended",
+      completed: "Turn done", idle: "Idle", sleeping: "Ended",
     },
   });
 
@@ -63,6 +63,19 @@
     if (label.includes("copilot")) return "copilot";
     if (label.includes("gemini")) return "gemini";
     return "idle";
+  }
+
+  function getStatusWindowSize(metrics) {
+    const value = metrics && typeof metrics === "object" ? metrics : {};
+    const rectWidth = Math.max(0, numberOr(value.rectWidth, 0));
+    const rectHeight = Math.max(0, numberOr(value.rectHeight, 0));
+    const scrollWidth = Math.max(0, numberOr(value.scrollWidth, 0));
+    const borderWidth = Math.max(0, numberOr(value.borderWidth, 0));
+    const windowPadding = Math.max(0, numberOr(value.windowPadding, 10));
+    return {
+      width: Math.ceil(Math.max(rectWidth, scrollWidth + borderWidth)) + windowPadding,
+      height: Math.ceil(rectHeight) + windowPadding,
+    };
   }
 
   function getAgentTone(agentId) {
@@ -140,6 +153,7 @@
     getStateTone,
     getStatusText,
     getStatusTone,
+    getStatusWindowSize,
     normalizeSnapshot,
   };
 });

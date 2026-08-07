@@ -39,11 +39,21 @@ test("reset time uses the machine local date, weekday, and time", () => {
   assert.equal(formatLocalReset(undefined), "等待额度刷新");
 });
 
-test("session states use the agreed Chinese labels", () => {
+test("session states use turn-level completion wording", () => {
   assert.equal(getStateLabel("waiting"), "等待输入");
   assert.equal(getStateLabel("error"), "出错");
-  assert.equal(getStateLabel("completed"), "已完成");
-  assert.equal(getStateLabel("completed", "en"), "Completed");
+  assert.equal(getStateLabel("completed"), "本轮完成");
+  assert.equal(getStateLabel("completed", "en"), "Turn done");
+});
+
+test("status sizing uses natural content width when the current window clips it", () => {
+  const { getStatusWindowSize } = require("../src/activity-view-model");
+  assert.deepStrictEqual(getStatusWindowSize({
+    rectWidth: 76,
+    rectHeight: 32,
+    scrollWidth: 142,
+    borderWidth: 2,
+  }), { width: 154, height: 42 });
 });
 
 test("activity windows keep scripts and styles external under a strict CSP", () => {

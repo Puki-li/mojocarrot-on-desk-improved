@@ -14,7 +14,13 @@
       ? `${text}, open active sessions`
       : `${text}，打开活跃会话`);
     const bounds = statusButton.getBoundingClientRect();
-    window.activityAPI.reportStatusSize(Math.ceil(bounds.width) + 10, Math.ceil(bounds.height) + 10);
+    const size = viewModel.getStatusWindowSize({
+      rectWidth: bounds.width,
+      rectHeight: bounds.height,
+      scrollWidth: statusButton.scrollWidth,
+      borderWidth: Math.max(0, statusButton.offsetWidth - statusButton.clientWidth),
+    });
+    window.activityAPI.reportStatusSize(size.width, size.height);
   }
 
   statusButton.addEventListener("click", () => window.activityAPI.togglePanel());

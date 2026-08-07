@@ -172,7 +172,7 @@ function getActivityAlertCopy(state) {
   const zh = lang === "zh";
   if (state === "waiting") return zh ? "等待你的输入" : "Waiting for input";
   if (state === "error") return zh ? "任务执行出错" : "Task failed";
-  if (state === "completed") return zh ? "任务已完成" : "Task completed";
+  if (state === "completed") return zh ? "本轮响应已完成" : "Turn completed";
   return zh ? "状态已更新" : "Status updated";
 }
 

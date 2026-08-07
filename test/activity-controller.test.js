@@ -77,8 +77,12 @@ test("activity controller keeps the status pill visible and opens the panel on d
   controller.updateSnapshot({ status: { label: "Idle" }, sessions: [], sessionCount: 0 });
   assert.deepStrictEqual(windows[0].webContents.messages.at(-1)[0], "activity:snapshot");
   ipcMain.emit("activity:status-size", { sender: windows[0].webContents }, { width: 100, height: 44 });
-  assert.equal(windows[0].bounds.width, 100, "status pill follows its rendered content width");
+  assert.equal(windows[0].bounds.width, 128, "status pill keeps a readable minimum width");
   assert.equal(windows[0].bounds.height, 44);
+  ipcMain.emit("activity:status-size", { sender: windows[0].webContents }, { width: 180, height: 44 });
+  assert.equal(windows[0].bounds.width, 180, "status pill follows valid rendered content width");
+  ipcMain.emit("activity:status-size", { sender: windows[0].webContents }, { width: 999, height: 44 });
+  assert.equal(windows[0].bounds.width, 220, "status pill caps unexpectedly large measurements");
 
   controller.togglePanel();
   assert.equal(windows[1].isVisible(), true);

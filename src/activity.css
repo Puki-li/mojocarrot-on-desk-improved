@@ -161,7 +161,7 @@ button {
 
 .activity-status {
   width: max-content;
-  min-width: 66px;
+  min-width: 118px;
   height: auto;
   min-height: 32px;
   display: inline-flex;

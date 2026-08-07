@@ -44,7 +44,7 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. This pr
 ### Session Intelligence
 - **Multi-session tracking** — sessions across all agents resolve to the highest-priority state
 - **Always-visible activity pill** — shows `Idle`, `DND`, or the dominant agent plus the number of other active sessions; click it to open the activity panel
-- **Activity panel** — lists current sessions across Codex, Claude Code, Cursor, Copilot, and Gemini; completed sessions remain visible for 10 minutes
+- **Activity panel** — lists current sessions across Codex, Claude Code, Cursor, Copilot, and Gemini; turn-complete sessions remain visible for 5 minutes and duplicate completion rows are collapsed
 - **Codex weekly usage** — the activity panel emphasizes the remaining weekly percentage and shows the local reset date, weekday, and time
 - **Important status card** — waiting input, errors, completions, and Codex 20%/10% quota thresholds use a single priority-based alert card
 - **Subagent awareness** — juggling for 1 subagent, conducting for 2+

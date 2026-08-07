@@ -35,10 +35,12 @@ class CodexLogMonitor {
 
   start() {
     if (this._interval) return;
-    // Initial scan
-    this._poll();
+    // Existing logs are state recovery, not fresh activity. Replaying every
+    // historical task_complete would create false completion notifications.
+    const recoverExisting = this._config.logConfig.recoverExistingFiles !== false;
+    this._poll(recoverExisting);
     this._interval = setInterval(
-      () => this._poll(),
+      () => this._poll(false),
       this._config.logConfig.pollIntervalMs || 1500
     );
   }
@@ -54,7 +56,7 @@ class CodexLogMonitor {
     this._tracked.clear();
   }
 
-  _poll() {
+  _poll(recoverExisting = false) {
     const dirs = this._getSessionDirs();
     for (const dir of dirs) {
       let files;
@@ -74,7 +76,7 @@ class CodexLogMonitor {
             if (now - mtime > 120000) continue; // older than 2 min — completed session, skip
           } catch { continue; }
         }
-        this._pollFile(filePath, file);
+        this._pollFile(filePath, file, recoverExisting);
       }
     }
     this._cleanStaleFiles();
@@ -95,7 +97,7 @@ class CodexLogMonitor {
     return dirs;
   }
 
-  _pollFile(filePath, fileName) {
+  _pollFile(filePath, fileName, recoverExisting = false) {
     let stat;
     try {
       stat = fs.statSync(filePath);
@@ -104,6 +106,7 @@ class CodexLogMonitor {
     }
 
     let tracked = this._tracked.get(filePath);
+    const isRecoveryRead = !tracked && recoverExisting;
     if (!tracked) {
       // New file — extract session ID from filename
       // Format: rollout-YYYY-MM-DDTHH-MM-SS-<uuid>.jsonl
@@ -117,6 +120,9 @@ class CodexLogMonitor {
         lastState: null,
         partial: "", // incomplete line buffer
         hadToolUse: false,
+        isSubagent: false,
+        reported: false,
+        lastEventKey: null,
       };
       this._tracked.set(filePath, tracked);
     }
@@ -145,11 +151,24 @@ class CodexLogMonitor {
 
     for (const line of lines) {
       if (!line.trim()) continue;
-      this._processLine(line, tracked);
+      this._processLine(line, tracked, !isRecoveryRead);
+    }
+
+    // On startup, recover only the final active state. Completed/idle history
+    // is intentionally silent; subsequent appended events remain real-time.
+    if (isRecoveryRead && !tracked.isSubagent &&
+        (tracked.lastState === "working" || tracked.lastState === "thinking")) {
+      tracked.reported = true;
+      this._onStateChange(tracked.sessionId, tracked.lastState, tracked.lastEventKey || "recovered", {
+        cwd: tracked.cwd,
+        sourcePid: null,
+        agentPid: null,
+        recovered: true,
+      });
     }
   }
 
-  _processLine(line, tracked) {
+  _processLine(line, tracked, emit = true) {
     let obj;
     try {
       obj = JSON.parse(line);
@@ -177,7 +196,14 @@ class CodexLogMonitor {
     // Extract CWD from session_meta
     if (type === "session_meta" && payload) {
       tracked.cwd = payload.cwd || "";
+      tracked.isSubagent = payload.thread_source === "subagent" ||
+        !!(payload.source && typeof payload.source === "object" && payload.source.subagent);
     }
+
+    // Internal Codex subagents copy parent history into their own rollout.
+    // They are implementation details of the same user turn, not additional
+    // user-visible sessions, and must never generate completion alerts.
+    if (tracked.isSubagent) return;
 
     // Approval heuristic: exec_command_end or function_call_output means command finished —
     // clear pending approval timer (these events are not in logEventMap)
@@ -191,6 +217,7 @@ class CodexLogMonitor {
     const mappedState = this._config.logEventMap[key];
     if (mappedState === undefined || mappedState === null) return;
     const state = resolveCodexEventState(key, tracked);
+    tracked.lastEventKey = key;
 
     // Turn-end: happy if tools were used this turn, idle otherwise.
     if (mappedState === "codex-turn-end") {
@@ -200,23 +227,27 @@ class CodexLogMonitor {
       }
       tracked.lastState = state;
       tracked.lastEventTime = Date.now();
-      this._onStateChange(tracked.sessionId, state, key, {
-        cwd: tracked.cwd,
-        sourcePid: null,
-        agentPid: null,
-      });
+      if (emit) {
+        tracked.reported = true;
+        this._onStateChange(tracked.sessionId, state, key, {
+          cwd: tracked.cwd,
+          sourcePid: null,
+          agentPid: null,
+        });
+      }
       return;
     }
 
     // Approval heuristic: function_call starts a 2s timer — if no exec_command_end arrives,
     // assume Codex is waiting for user approval and emit codex-permission
-    if (key === "response_item:function_call") {
+    if (emit && key === "response_item:function_call") {
       if (tracked.approvalTimer) clearTimeout(tracked.approvalTimer);
       const cmd = this._extractShellCommand(payload);
       if (cmd) {
         tracked.approvalTimer = setTimeout(() => {
           tracked.approvalTimer = null;
           tracked.lastEventTime = Date.now();
+          tracked.reported = true;
           this._onStateChange(tracked.sessionId, "codex-permission", key, {
             cwd: tracked.cwd,
             sourcePid: null,
@@ -227,16 +258,17 @@ class CodexLogMonitor {
       }
     }
 
-    // Avoid spamming same state
-    if (state === tracked.lastState && state === "working") return;
     tracked.lastState = state;
     tracked.lastEventTime = Date.now();
 
-    this._onStateChange(tracked.sessionId, state, key, {
-      cwd: tracked.cwd,
-      sourcePid: null, // JSONL doesn't contain terminal PID
-      agentPid: null, // can't reliably match from log file
-    });
+    if (emit) {
+      tracked.reported = true;
+      this._onStateChange(tracked.sessionId, state, key, {
+        cwd: tracked.cwd,
+        sourcePid: null, // JSONL doesn't contain terminal PID
+        agentPid: null, // can't reliably match from log file
+      });
+    }
   }
 
   // Extract shell command from function_call payload
@@ -271,11 +303,13 @@ class CodexLogMonitor {
       if (age > 300000) {
         // 5 min stale — notify session end and stop tracking
         if (tracked.approvalTimer) clearTimeout(tracked.approvalTimer);
-        this._onStateChange(tracked.sessionId, "sleeping", "stale-cleanup", {
-          cwd: tracked.cwd,
-          sourcePid: null,
-          agentPid: null,
-        });
+        if (!tracked.isSubagent && tracked.reported) {
+          this._onStateChange(tracked.sessionId, "sleeping", "stale-cleanup", {
+            cwd: tracked.cwd,
+            sourcePid: null,
+            agentPid: null,
+          });
+        }
         this._tracked.delete(filePath);
       }
     }
