@@ -116,6 +116,24 @@ test("parallel active sessions for the same agent and project remain separate", 
   assert.equal(snapshot.activeCount, 2);
 });
 
+test("a Claude-compatible hook mirroring a Codex UUID is hidden in favor of Codex", () => {
+  const uuid = "019fd6a1-94f8-7160-bad5-d321e49b477f";
+  const snapshot = buildActivitySnapshot({
+    sessions: sessions([
+      [`codex:${uuid}`, {
+        state: "thinking", agentId: "codex", cwd: "/repo/mojocarrot", updatedAt: 30,
+      }],
+      [uuid, {
+        state: "thinking", agentId: "claude-code", cwd: "/repo/mojocarrot", updatedAt: 31,
+      }],
+    ]),
+    now: 40,
+  });
+  assert.equal(snapshot.sessionCount, 1);
+  assert.equal(snapshot.sessions[0].agentId, "codex");
+  assert.equal(snapshot.status.label, "Codex");
+});
+
 test("panel keeps important states first while the pill favors an executing agent", () => {
   const snapshot = buildActivitySnapshot({
     sessions: sessions([

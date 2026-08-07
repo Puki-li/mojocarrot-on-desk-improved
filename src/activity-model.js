@@ -112,6 +112,17 @@ function collapseCompletedSessions(sessionViews) {
   return collapsed;
 }
 
+function removeMirroredClaudeSessions(sessionViews) {
+  const codexSessionIds = new Set(
+    sessionViews
+      .filter((session) => session.agentId === "codex")
+      .map((session) => String(session.id).replace(/^codex:/, ""))
+  );
+  return sessionViews.filter((session) => !(
+    session.agentId === "claude-code" && codexSessionIds.has(String(session.id))
+  ));
+}
+
 function createQuotaView(quota) {
   if (!quota || typeof quota !== "object") return null;
   return {
@@ -130,7 +141,7 @@ function buildActivitySnapshot({ sessions, doNotDisturb = false, quota = null, n
     sessionViews.push(createSessionView(id, session));
   }
   sessionViews.sort(compareSessionViews);
-  const visibleSessionViews = collapseCompletedSessions(sessionViews);
+  const visibleSessionViews = collapseCompletedSessions(removeMirroredClaudeSessions(sessionViews));
 
   const activeSessions = visibleSessionViews.filter(
     (session) => !session.headless && ACTIVE_STATES.has(session.state)

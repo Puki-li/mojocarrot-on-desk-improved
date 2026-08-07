@@ -9,4 +9,11 @@ function resolvePostToolUseFailureState(toolName) {
   return toolName === "Bash" ? "working" : "error";
 }
 
-module.exports = { resolvePostToolUseFailureState };
+// Some Codex hosts execute Claude-compatible hooks. A local hook is only a
+// Claude Code event when the hook process tree actually contains Claude.
+// Remote hooks cannot inspect local process ancestry, so keep forwarding them.
+function shouldForwardClaudeHook(isRemote, claudePid) {
+  return isRemote === true || (Number.isInteger(claudePid) && claudePid > 0);
+}
+
+module.exports = { resolvePostToolUseFailureState, shouldForwardClaudeHook };

@@ -5,7 +5,7 @@
 // Reads stdin JSON from Claude Code for session_id
 
 const { postStateToRunningServer, readHostPrefix } = require("./server-config");
-const { resolvePostToolUseFailureState } = require("./clawd-hook-lib");
+const { resolvePostToolUseFailureState, shouldForwardClaudeHook } = require("./clawd-hook-lib");
 
 const EVENT_TO_STATE = {
   SessionStart: "idle",
@@ -191,15 +191,22 @@ function send(sessionId, cwd, source, toolName) {
   let resolvedState = (event === "SessionEnd" && source === "clear") ? "sweeping" : state;
   if (event === "PostToolUseFailure") resolvedState = resolvePostToolUseFailureState(toolName);
 
+  const isRemote = !!process.env.CLAWD_REMOTE;
+  const stablePid = isRemote ? null : getStablePid();
+  if (!shouldForwardClaudeHook(isRemote, _claudePid)) {
+    process.exit(0);
+    return;
+  }
+
   const body = { state: resolvedState, session_id: sessionId, event };
   body.agent_id = "claude-code";
   if (cwd) body.cwd = cwd;
-  if (process.env.CLAWD_REMOTE) {
+  if (isRemote) {
     body.host = readHostPrefix();
   } else {
     // Walk to stable terminal PID — process.ppid is an ephemeral shell
     // that dies when the hook exits, so it's useless for later focus calls
-    body.source_pid = getStablePid();
+    body.source_pid = stablePid;
     if (_detectedEditor) body.editor = _detectedEditor;
     if (_claudePid) {
       body.agent_pid = _claudePid;
