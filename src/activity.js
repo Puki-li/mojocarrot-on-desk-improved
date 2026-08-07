@@ -7,7 +7,7 @@ const {
   positionStatusPill,
 } = require("./activity-geometry");
 
-const STATUS_SIZE = Object.freeze({ width: 220, height: 56 });
+const STATUS_SIZE = Object.freeze({ width: 230, height: 56 });
 const STATUS_MIN_SIZE = Object.freeze({ width: 128, height: 36 });
 const PANEL_DEFAULT_SIZE = Object.freeze({ width: 430, height: 500 });
 const ALERT_SIZE = Object.freeze({ width: 430, height: 150 });
