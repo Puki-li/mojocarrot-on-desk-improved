@@ -1,0 +1,35 @@
+(function renderActivityStatus() {
+  "use strict";
+
+  const statusButton = document.getElementById("activityStatus");
+  const statusLabel = document.getElementById("statusLabel");
+  const viewModel = window.activityViewModel;
+
+  function render(snapshot) {
+    const normalized = viewModel.normalizeSnapshot(snapshot);
+    const text = viewModel.getStatusText(normalized);
+    const compact = text === "Idle";
+    statusLabel.textContent = text;
+    statusButton.dataset.tone = viewModel.getStatusTone(normalized.status);
+    statusButton.dataset.compact = compact ? "true" : "false";
+    statusButton.setAttribute("aria-label", normalized.lang === "en"
+      ? `${text}, open active sessions`
+      : `${text}，打开活跃会话`);
+    const bounds = statusButton.getBoundingClientRect();
+    const size = viewModel.getStatusWindowSize({
+      rectWidth: bounds.width,
+      rectHeight: bounds.height,
+      scrollWidth: statusButton.scrollWidth,
+      borderWidth: Math.max(0, statusButton.offsetWidth - statusButton.clientWidth),
+    });
+    window.activityAPI.reportStatusSize(size.width, size.height, compact);
+  }
+
+  statusButton.addEventListener("click", () => window.activityAPI.togglePanel());
+  statusButton.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    window.activityAPI.showContextMenu();
+  });
+  window.activityAPI.onSnapshot(render);
+  render(null);
+})();

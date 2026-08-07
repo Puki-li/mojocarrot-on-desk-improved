@@ -5,7 +5,11 @@
 // Reads stdin JSON from Claude Code for session_id
 
 const { postStateToRunningServer, readHostPrefix } = require("./server-config");
-const { resolvePostToolUseFailureState } = require("./clawd-hook-lib");
+const {
+  queryWindowsProcess,
+  resolvePostToolUseFailureState,
+  shouldForwardClaudeHook,
+} = require("./clawd-hook-lib");
 
 const EVENT_TO_STATE = {
   SessionStart: "idle",
@@ -91,15 +95,10 @@ function getStablePid() {
     let name, parentPid;
     try {
       if (isWin) {
-        const out = execSync(
-          `wmic process where "ProcessId=${pid}" get Name,ParentProcessId /format:csv`,
-          { encoding: "utf8", timeout: 1500, windowsHide: true }
-        );
-        const lines = out.trim().split("\n").filter(l => l.includes(","));
-        if (!lines.length) break;
-        const parts = lines[lines.length - 1].split(",");
-        name = (parts[1] || "").trim().toLowerCase();
-        parentPid = parseInt(parts[2], 10);
+        const info = queryWindowsProcess(pid, execSync);
+        if (!info) break;
+        name = info.name;
+        parentPid = info.parentPid;
       } else {
         const cp = require("child_process");
         const ppidOut = cp.execSync(`ps -o ppid= -p ${pid}`, { encoding: "utf8", timeout: 1000 }).trim();
@@ -123,8 +122,7 @@ function getStablePid() {
       } else if (name === "node.exe" || name === "node") {
         try {
           const cmdOut = isWin
-            ? execSync(`wmic process where "ProcessId=${pid}" get CommandLine /format:csv`,
-                { encoding: "utf8", timeout: 500, windowsHide: true })
+            ? queryWindowsProcess(pid, execSync)?.commandLine || ""
             : execSync(`ps -o command= -p ${pid}`, { encoding: "utf8", timeout: 500 });
           if (cmdOut.includes("claude-code") || cmdOut.includes("@anthropic-ai")) _claudePid = pid;
         } catch {}
@@ -140,10 +138,7 @@ function getStablePid() {
   if (_claudePid && !_isHeadless) {
     try {
       const cmdOut = isWin
-        ? execSync(
-            `wmic process where "ProcessId=${_claudePid}" get CommandLine /format:csv`,
-            { encoding: "utf8", timeout: 500, windowsHide: true }
-          )
+        ? queryWindowsProcess(_claudePid, execSync)?.commandLine || ""
         : execSync(`ps -o command= -p ${_claudePid}`, { encoding: "utf8", timeout: 500 });
       if (/\s(-p|--print)(\s|$)/.test(cmdOut)) _isHeadless = true;
     } catch {}
@@ -191,15 +186,22 @@ function send(sessionId, cwd, source, toolName) {
   let resolvedState = (event === "SessionEnd" && source === "clear") ? "sweeping" : state;
   if (event === "PostToolUseFailure") resolvedState = resolvePostToolUseFailureState(toolName);
 
+  const isRemote = !!process.env.CLAWD_REMOTE;
+  const stablePid = isRemote ? null : getStablePid();
+  if (!shouldForwardClaudeHook(isRemote, _claudePid)) {
+    process.exit(0);
+    return;
+  }
+
   const body = { state: resolvedState, session_id: sessionId, event };
   body.agent_id = "claude-code";
   if (cwd) body.cwd = cwd;
-  if (process.env.CLAWD_REMOTE) {
+  if (isRemote) {
     body.host = readHostPrefix();
   } else {
     // Walk to stable terminal PID — process.ppid is an ephemeral shell
     // that dies when the hook exits, so it's useless for later focus calls
-    body.source_pid = getStablePid();
+    body.source_pid = stablePid;
     if (_detectedEditor) body.editor = _detectedEditor;
     if (_claudePid) {
       body.agent_pid = _claudePid;

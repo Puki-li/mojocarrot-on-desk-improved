@@ -31,7 +31,7 @@
 - **角色化动画状态** — 待机、思考、打字、建造、杂耍、指挥、报错、开心、通知、扫地、搬运、睡觉，以及对应的 mini 模式与点击反应，均已调整为 Mojocarrot 版本
 - **眼球追踪** — 待机状态下 Mojocarrot 跟随鼠标，身体微倾，影子拉伸
 - **睡眠序列** — 60 秒无活动 → 打哈欠 → 打盹 → 倒下 → 睡觉；移动鼠标触发惊醒弹起动画
-- **点击反应** — 双击戳戳，连点 4 下东张西望
+- **点击反应** — 脸部双击触发张望或 annoyed，快速四击随机触发水果小队、惊跳或变身
 - **任意状态拖拽** — 随时抓起 Mojocarrot（Pointer Capture 防止快甩丢失），松手恢复当前动画
 - **极简模式** — 拖到右边缘或右键"极简模式"；Mojocarrot 藏在屏幕边缘，悬停探头，通知/完成有迷你动画，抛物线跳跃过渡
 
@@ -42,7 +42,11 @@
 - **自动关闭** — 如果你先在终端回答了，气泡自动消失
 
 ### 会话智能
-- **多会话追踪** — 多个 Claude Code 会话自动解析到最高优先级状态
+- **多会话追踪** — Codex、Claude Code、Cursor、Copilot 与 Gemini 的多个会话独立追踪，并解析到最高优先级状态
+- **常驻活跃状态条** — 始终显示 `Idle`、`DND` 或当前主导 Agent；存在其他活跃会话时追加 `+N`，点击后打开活跃会话面板
+- **活跃会话面板** — 集中查看各 Agent 会话；已完成会话继续保留 10 分钟，便于确认刚刚由哪个工具完成
+- **Codex 周额度** — 在活跃会话面板重点显示周额度剩余百分比，并标注本地日期、周几、时间和重置说明
+- **重要状态卡** — 等待输入、报错、完成，以及 Codex 周额度剩余 20%/10% 时按优先级只展示一张提醒卡
 - **子代理感知** — 1 个子代理杂耍，2 个以上指挥
 - **终端聚焦** — 右键 Mojocarrot → 会话菜单，一键跳转到对应会话的终端窗口；通知/注意状态自动聚焦相关终端
 - **进程存活检测** — 检测已崩溃/退出的 Claude Code 进程，10 秒内清理孤儿会话
@@ -53,7 +57,7 @@
 - **位置记忆** — 重启后 Mojocarrot 回到上次的位置（包括极简模式）
 - **单实例锁** — 防止重复启动
 - **自动启动** — Claude Code 的 SessionStart hook 可在 Mojocarrot on Desk 未运行时自动拉起
-- **免打扰模式** — 右键或托盘菜单进入休眠，所有 hook 事件静默，直到手动唤醒 Mojocarrot
+- **免打扰模式** — 右键或托盘菜单进入休眠，静默桌宠动画、权限气泡和额度提醒；权限请求不会被自动允许或拒绝，仍在对应 Agent 终端处理
 - **系统托盘** — 调大小（S/M/L）、免打扰、语言切换、开机自启、检查更新
 - **国际化** — 支持英文和中文界面，右键菜单或托盘切换
 - **自动更新** — 检查 GitHub release；Windows 退出时安装 NSIS 更新包，macOS 打开 release 页面，Linux 需手动下载
@@ -152,6 +156,8 @@ Host my-server
 
 远程 hook 以 `CLAWD_REMOTE` 模式运行，跳过 PID 采集（远程 PID 在本地无意义）。远程会话不支持终端聚焦。
 
+状态与权限 POST 均需要鉴权。远程使用时，请在可信远程终端中，将本机 `~/.clawd/auth-token` 的值配置为 `CLAWD_AUTH_TOKEN`，再注册 hooks 或启动 Codex monitor。部署脚本不会打印或自动复制该令牌。
+
 > 感谢 [@Magic-Bytes](https://github.com/Magic-Bytes) 提出 SSH 隧道方案（[#9](https://github.com/rullerzhou-afk/clawd-on-desk/issues/9)）。
 
 ### macOS 说明
@@ -177,7 +183,7 @@ Host my-server
 | **Copilot CLI：需手动配置 hooks** | Copilot 需要手动创建 `~/.copilot/hooks/hooks.json`。Claude Code 和 Codex 开箱即用。 |
 | **Copilot CLI：无权限气泡** | Copilot 的 `preToolUse` 只支持拒绝，无法做完整的允许/拒绝审批流。权限气泡仅支持 Claude Code。 |
 | **macOS/Linux 自动更新** | macOS 无 Apple 代码签名，Linux 不支持自动更新，均需从 GitHub Releases 手动下载。 |
-| **Electron 主进程无自动化测试** | 单元测试覆盖了 agent 配置和日志轮询，但状态机、窗口管理、托盘等 Electron 逻辑暂无自动化测试。 |
+| **Electron 窗口行为仍需手动测试** | 单元测试已覆盖 agent、日志轮询和状态机关键行为；透明窗口、托盘、跨平台聚焦等系统集成仍需手动验证。 |
 
 ## 致谢
 

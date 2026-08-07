@@ -6,6 +6,9 @@ const {
   getObjRect: projectObjRect,
   getHitRectScreen: projectHitRectScreen,
 } = require("./geometry");
+const { buildActivitySnapshot } = require("./activity-model");
+const { CodexQuotaSource, createThresholdCycleKey } = require("../agents/codex-quota");
+const { findCrossedThresholds } = require("./quota-alerts");
 
 const isMac = process.platform === "darwin";
 const isLinux = process.platform === "linux";
@@ -69,6 +72,10 @@ function savePrefs() {
 }
 
 let _codexMonitor = null;          // Codex CLI JSONL log polling instance
+let _codexQuotaSource = null;      // Codex weekly quota reader
+let _codexQuota = null;
+let _activity = null;
+const _quotaAlertKeys = new Set();
 
 // ── CSS <object> sizing (mirrors styles.css #clawd) ──
 const OBJ_FRAME = DEFAULT_OBJECT_FRAME;
@@ -112,6 +119,7 @@ function togglePetVisibility() {
       }
     }
     reapplyMacVisibility();
+    if (_activity) _activity.show();
     petHidden = false;
   } else {
     win.hide();
@@ -120,6 +128,7 @@ function togglePetVisibility() {
     for (const perm of pendingPermissions) {
       if (perm.bubble && !perm.bubble.isDestroyed()) perm.bubble.hide();
     }
+    if (_activity) _activity.hide();
     petHidden = true;
   }
   buildTrayMenu();
@@ -145,6 +154,97 @@ function sendToRenderer(channel, ...args) {
 }
 function sendToHitWin(channel, ...args) {
   if (hitWin && !hitWin.isDestroyed()) hitWin.webContents.send(channel, ...args);
+}
+
+function getActivitySnapshot() {
+  return {
+    version: 1,
+    lang,
+    ...buildActivitySnapshot({
+      sessions,
+      doNotDisturb,
+      quota: _codexQuota,
+    }),
+  };
+}
+
+function getActivityAlertCopy(state) {
+  const zh = lang === "zh";
+  if (state === "waiting") return zh ? "等待你的输入" : "Waiting for input";
+  if (state === "error") return zh ? "任务执行出错" : "Task failed";
+  if (state === "completed") return zh ? "本轮响应已完成" : "Turn completed";
+  return zh ? "状态已更新" : "Status updated";
+}
+
+function refreshActivity(change) {
+  if (!_activity) return;
+  const activitySnapshot = getActivitySnapshot();
+  _activity.updateSnapshot(activitySnapshot);
+
+  if (change?.state === "dnd") {
+    if (change.enabled) _activity.hideAlert();
+    return;
+  }
+  if (!change?.sessionId) return;
+
+  if (change.state !== "waiting") _activity.clearAlertForSession(change.sessionId);
+  if (doNotDisturb || !["waiting", "error", "completed"].includes(change.state)) return;
+
+  const session = activitySnapshot.sessions.find((entry) => entry.id === change.sessionId);
+  if (!session) return;
+  const priorities = { waiting: 4, error: 3, completed: 2 };
+  const durations = { waiting: null, error: 5000, completed: 4000 };
+  _activity.showAlert({
+    kind: change.state,
+    priority: priorities[change.state],
+    durationMs: durations[change.state],
+    sessionId: session.id,
+    focusSessionId: session.focusable ? session.id : null,
+    agentLabel: session.agentLabel,
+    project: session.project,
+    message: getActivityAlertCopy(change.state),
+  });
+}
+
+function focusActivitySession(sessionId) {
+  const session = sessions.get(sessionId);
+  if (!session || session.host || !session.sourcePid) return false;
+  focusTerminalWindow(session.sourcePid, session.cwd, session.editor, session.pidChain);
+  return true;
+}
+
+function handleCodexQuotaUpdate(nextQuota) {
+  if (!nextQuota) return;
+  const previous = _codexQuota;
+  _codexQuota = nextQuota;
+  refreshActivity(null);
+
+  if (!previous || previous.cycleId !== nextQuota.cycleId) {
+    _quotaAlertKeys.clear();
+    return;
+  }
+
+  const crossedThresholds = findCrossedThresholds(
+    previous,
+    nextQuota,
+    _quotaAlertKeys,
+    createThresholdCycleKey
+  );
+  for (const { threshold, key } of crossedThresholds) {
+    _quotaAlertKeys.add(key);
+    if (doNotDisturb || !_activity) continue;
+    _activity.showAlert({
+      kind: "quota",
+      priority: 1,
+      durationMs: 5000,
+      sessionId: null,
+      agentLabel: "Codex",
+      project: "",
+      message: lang === "zh"
+        ? `本周额度仅剩 ${Math.round(nextQuota.remainingPercent)}%`
+        : `${Math.round(nextQuota.remainingPercent)}% weekly quota remaining`,
+    });
+  }
 }
 
 // Sync input window position to match render window's hitbox.
@@ -194,9 +294,10 @@ const _permCtx = {
     const s = sessions.get(sessionId);
     if (s && s.sourcePid) focusTerminalWindow(s.sourcePid, s.cwd, s.editor, s.pidChain);
   },
+  onPermissionSettled: (sessionId) => _state.settleWaitingSession(sessionId),
 };
 const _perm = require("./permission")(_permCtx);
-const { showPermissionBubble, resolvePermissionEntry, sendPermissionResponse, repositionBubbles, permLog, PASSTHROUGH_TOOLS, showCodexNotifyBubble, clearCodexNotifyBubbles } = _perm;
+const { showPermissionBubble, resolvePermissionEntry, handOffPermissionEntry, sendPermissionResponse, repositionBubbles, permLog, PASSTHROUGH_TOOLS, showCodexNotifyBubble, clearCodexNotifyBubbles } = _perm;
 const pendingPermissions = _perm.pendingPermissions;
 let permDebugLog = null; // set after app.whenReady()
 let updateDebugLog = null; // set after app.whenReady()
@@ -216,6 +317,9 @@ function reapplyMacVisibility() {
   };
   apply(win);
   apply(hitWin);
+  if (_activity) {
+    for (const activityWin of _activity.getWindows()) apply(activityWin);
+  }
   for (const perm of pendingPermissions) apply(perm.bubble);
   apply(contextMenuOwner);
 }
@@ -244,10 +348,12 @@ const _stateCtx = {
   t: (key) => t(key),
   focusTerminalWindow: (...args) => focusTerminalWindow(...args),
   resolvePermissionEntry: (...args) => resolvePermissionEntry(...args),
+  handOffPermissionEntry: (...args) => handOffPermissionEntry(...args),
   miniPeekIn: () => miniPeekIn(),
   miniPeekOut: () => miniPeekOut(),
   buildContextMenu: () => buildContextMenu(),
   buildTrayMenu: () => buildTrayMenu(),
+  onActivityChanged: (change) => refreshActivity(change),
 };
 const _state = require("./state")(_stateCtx);
 const { setState, applyState, updateSession, resolveDisplayState, getSvgOverride,
@@ -434,6 +540,7 @@ const _menuCtx = {
   getUpdateMenuItem: () => getUpdateMenuItem(),
   buildSessionSubmenu: () => buildSessionSubmenu(),
   savePrefs,
+  onLanguageChanged: () => refreshActivity(null),
   getHookServerPort: () => getHookServerPort(),
   clampToScreen,
   getNearestWorkArea,
@@ -598,8 +705,14 @@ function createWindow() {
     if (isWin) guardAlwaysOnTop(hitWin);
 
     // Event-level safety net for position sync
-    win.on("move", syncHitWin);
-    win.on("resize", syncHitWin);
+    win.on("move", () => {
+      syncHitWin();
+      if (_activity) _activity.reposition();
+    });
+    win.on("resize", () => {
+      syncHitWin();
+      if (_activity) _activity.reposition();
+    });
 
     // Send initial state to hitWin once it's ready
     hitWin.webContents.on("did-finish-load", () => {
@@ -616,6 +729,26 @@ function createWindow() {
     });
   }
 
+  if (!_activity) {
+    _activity = require("./activity")({
+      isMac,
+      isLinux,
+      isWin,
+      linuxWindowType: LINUX_WINDOW_TYPE,
+      winTopmostLevel: WIN_TOPMOST_LEVEL,
+      get petWindow() { return win; },
+      getHitRectScreen,
+      getNearestWorkArea,
+      getMiniEdge: () => _mini.getMiniMode() ? _mini.getMiniEdge() : null,
+      focusSession: focusActivitySession,
+      showContextMenu: showPetContextMenu,
+      guardAlwaysOnTop,
+      reapplyMacVisibility,
+    });
+    _activity.create();
+    refreshActivity(null);
+  }
+
   ipcMain.on("show-context-menu", showPetContextMenu);
 
   ipcMain.on("move-window-by", (event, dx, dy) => {
@@ -625,6 +758,7 @@ function createWindow() {
     const clamped = clampToScreen(x + dx, y + dy, size.width, size.height);
     win.setBounds({ ...clamped, width: size.width, height: size.height });
     syncHitWin();
+    if (_activity) _activity.reposition();
     if (bubbleFollowPet && pendingPermissions.length) repositionBubbles();
   });
 
@@ -637,7 +771,10 @@ function createWindow() {
 
   ipcMain.on("drag-lock", (event, locked) => {
     dragLocked = !!locked;
-    if (locked) mouseOverPet = true;
+    if (locked) {
+      mouseOverPet = true;
+      if (_activity) _activity.closePanel();
+    }
   });
 
   // Reaction relay: hitWin → main → renderWin
@@ -738,6 +875,7 @@ function createWindow() {
     if (!win || win.isDestroyed()) return;
     if (_mini.getMiniMode()) {
       _mini.handleDisplayChange();
+      if (_activity) _activity.reposition();
       return;
     }
     const { x, y, width, height } = win.getBounds();
@@ -745,20 +883,24 @@ function createWindow() {
     if (clamped.x !== x || clamped.y !== y) {
       win.setBounds({ ...clamped, width, height });
     }
+    if (_activity) _activity.reposition();
   });
   screen.on("display-removed", () => {
     reapplyMacVisibility();
     if (!win || win.isDestroyed()) return;
     if (_mini.getMiniMode()) {
       exitMiniMode();
+      if (_activity) _activity.reposition();
       return;
     }
     const { x, y, width, height } = win.getBounds();
     const clamped = clampToScreen(x, y, width, height);
     win.setBounds({ ...clamped, width, height });
+    if (_activity) _activity.reposition();
   });
   screen.on("display-added", () => {
     reapplyMacVisibility();
+    if (_activity) _activity.reposition();
   });
 }
 
@@ -813,10 +955,6 @@ const _miniCtx = {
 const _mini = require("./mini")(_miniCtx);
 const { enterMiniMode, exitMiniMode, enterMiniViaMenu, miniPeekIn, miniPeekOut,
         checkMiniModeSnap, cancelMiniTransition, animateWindowX, animateWindowParabola } = _mini;
-
-// Convenience getters for mini state (used throughout main.js)
-Object.defineProperties(this || {}, {}); // no-op placeholder
-// Mini state is accessed via _mini getters in ctx objects below
 
 // ── Auto-install VS Code / Cursor terminal-focus extension ──
 const EXT_ID = "clawd.clawd-terminal-focus";
@@ -880,6 +1018,7 @@ if (!gotTheLock) {
       hitWin.showInactive();
       if (isLinux) hitWin.setSkipTaskbar(true);
     }
+    if (_activity) _activity.show();
     reapplyMacVisibility();
   });
 
@@ -902,22 +1041,40 @@ if (!gotTheLock) {
     // Auto-register Claude Code hooks on every launch (dedup-safe)
     syncClawdHooks();
 
+    // Read the current weekly quota once, then keep it fresh from the same
+    // incremental JSONL stream used by the Codex activity monitor.
+    try {
+      _codexQuotaSource = new CodexQuotaSource({
+        onUpdate: handleCodexQuotaUpdate,
+        continuousPolling: false,
+        asyncInitialPoll: true,
+        onError: (err) => console.warn("Clawd: Codex quota scan failed:", err.message),
+      });
+      _codexQuotaSource.start();
+    } catch (err) {
+      console.warn("Clawd: Codex quota reader not started:", err.message);
+    }
+
     // Start Codex CLI JSONL log monitor
     try {
       const CodexLogMonitor = require("../agents/codex-log-monitor");
-      const codexAgent = require("../agents/codex");
+      const codexAgent = require("../agents/registry").getAgent("codex");
       _codexMonitor = new CodexLogMonitor(codexAgent, (sid, state, event, extra) => {
         if (state === "codex-permission") {
           updateSession(sid, "notification", event, null, extra.cwd, null, null, null, "codex");
-          showCodexNotifyBubble({
-            sessionId: sid,
-            command: extra.permissionDetail?.command || "",
-          });
+          if (!doNotDisturb) {
+            showCodexNotifyBubble({
+              sessionId: sid,
+              command: extra.permissionDetail?.command || "",
+            });
+          }
           return;
         }
         // Non-permission event — clear any lingering Codex notify bubbles
         clearCodexNotifyBubbles(sid);
         updateSession(sid, state, event, null, extra.cwd, null, null, null, "codex");
+      }, (record, metadata) => {
+        if (_codexQuotaSource) _codexQuotaSource.ingestObject(record, metadata);
       });
       _codexMonitor.start();
     } catch (err) {
@@ -945,6 +1102,8 @@ if (!gotTheLock) {
     _tick.cleanup();
     _mini.cleanup();
     if (_codexMonitor) _codexMonitor.stop();
+    if (_codexQuotaSource) _codexQuotaSource.stop();
+    if (_activity) _activity.cleanup();
     stopTopmostWatchdog();
     if (hwndRecoveryTimer) { clearTimeout(hwndRecoveryTimer); hwndRecoveryTimer = null; }
     _focus.cleanup();

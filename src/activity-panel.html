@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self';">
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="activity.css">
+  <title>活跃会话</title>
+</head>
+<body class="activity-panel-window">
+  <main class="activity-panel" aria-labelledby="sessionTitle">
+    <header class="panel-header">
+      <h1 id="sessionTitle">活跃会话（0）</h1>
+      <button class="panel-close" id="panelClose" type="button" aria-label="关闭活跃会话面板">×</button>
+    </header>
+
+    <section class="sessions-section" aria-label="会话列表">
+      <div class="session-list" id="sessionList"></div>
+      <div class="session-empty" id="sessionEmpty">
+        <span class="empty-orbit" aria-hidden="true"></span>
+        <span id="sessionEmptyText">暂无活跃会话</span>
+      </div>
+    </section>
+
+    <section class="quota-section" id="quotaSection" aria-labelledby="quotaTitle">
+      <div class="quota-header">
+        <h2 id="quotaTitle">Codex 用量</h2>
+        <span class="quota-period" id="quotaPeriod">本周</span>
+      </div>
+      <div class="quota-content" id="quotaContent">
+        <div class="quota-remaining">
+          <span class="quota-prefix" id="quotaPrefix">剩余</span>
+          <strong id="quotaPercent">—</strong>
+        </div>
+        <progress id="quotaProgress" max="100" value="0" aria-label="Codex 周额度剩余百分比"></progress>
+        <p class="quota-reset" id="quotaReset">等待 Codex 产生用量记录</p>
+      </div>
+    </section>
+  </main>
+  <script src="activity-view-model.js"></script>
+  <script src="activity-panel-renderer.js"></script>
+</body>
+</html>

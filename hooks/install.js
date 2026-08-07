@@ -183,8 +183,9 @@ function writeJsonAtomic(filePath, data) {
   const tmpPath = path.join(dir, `.${base}.${process.pid}.${Date.now()}.tmp`);
   fs.mkdirSync(dir, { recursive: true });
   try {
-    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), { encoding: "utf-8", mode: 0o600 });
     fs.renameSync(tmpPath, filePath);
+    try { fs.chmodSync(filePath, 0o600); } catch {}
   } catch (err) {
     try { fs.unlinkSync(tmpPath); } catch {}
     throw err;
@@ -464,6 +465,9 @@ function registerHooks(options = {}) {
   if (added > 0 || changed) {
     writeJsonAtomic(settingsPath, settings);
   }
+  // PermissionRequest URLs contain the local authentication token. Heal
+  // settings written by older releases even when hook contents are unchanged.
+  try { fs.chmodSync(settingsPath, 0o600); } catch {}
 
   if (!options.silent) {
     const versionLabel = versionInfo.status === "known" ? versionInfo.version : "unknown";

@@ -3,6 +3,11 @@
 # 用法: bash test-demo.sh [每个动画秒数，默认8]
 
 DELAY=${1:-8}
+AUTH_TOKEN=$(tr -d '\r\n' < "$HOME/.clawd/auth-token" 2>/dev/null || true)
+if [ -z "$AUTH_TOKEN" ]; then
+  echo "Mojocarrot auth token not found. Start the app first."
+  exit 1
+fi
 
 SVGS=(
   "clawd-idle-living.svg"
@@ -31,6 +36,7 @@ for i in "${!SVGS[@]}"; do
   echo "[$((i+1))/${#SVGS[@]}] $svg"
   curl -s -X POST http://127.0.0.1:23333/state \
     -H "Content-Type: application/json" \
+    -H "x-clawd-token: $AUTH_TOKEN" \
     -d "{\"state\":\"working\",\"svg\":\"$svg\"}"
   sleep "$DELAY"
 done

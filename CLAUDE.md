@@ -24,6 +24,7 @@ npm test               # 运行单元测试（node --test test/*.test.js）
 ```bash
 curl -X POST http://127.0.0.1:23333/state \
   -H "Content-Type: application/json" \
+  -H "x-clawd-token: $(tr -d '\r\n' < ~/.clawd/auth-token)" \
   -d '{"state":"working","svg":"clawd-working-building.svg"}'
 ```
 
@@ -36,7 +37,7 @@ bash test-bubble.sh    # 发送模拟权限请求测试气泡堆叠
 bash test-macos.sh     # macOS 适配测试（需先 npm start）
 ```
 
-单元测试覆盖 agents/、hook 注册和端口发现逻辑（`test/registry.test.js`、`test/codex-log-monitor.test.js`、`test/install.test.js`、`test/server-config.test.js`），使用 Node.js 内置 test runner。Electron 主进程（状态机、窗口、托盘）无自动化测试，依赖手动 + shell 脚本验证。
+单元测试使用 Node.js 内置 test runner，覆盖 agents/、Codex 日志轮询、hook 注册、端口发现、状态机关键行为、几何与点击判定、素材结构和仓库入口完整性。Electron 窗口生命周期、托盘和跨平台焦点行为仍依赖手动 + shell 脚本验证。
 
 ## 架构与数据流
 
@@ -96,6 +97,7 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 - `agents/cursor-agent.js` — Cursor Agent（hooks.json）事件映射
 - `agents/registry.js` — agent 注册表：按 ID 或进程名查找 agent 配置
 - `agents/codex-log-monitor.js` — Codex JSONL 增量轮询器（文件监视 + 增量读取 + 事件去重）
+- `agents/codex-quota.js` — 从本地 Codex rollout JSONL 中提取最长限额窗口（当前为周额度）及重置时间
 
 ### 核心文件
 
@@ -103,6 +105,8 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 |------|------|
 | `src/main.js` | Electron 主进程胶水：窗口创建、ipcMain 分发、ctx 组装、app 生命周期、偏好持久化、屏幕工具、HWND 恢复 |
 | `src/state.js` | 状态机核心：setState/applyState、多会话追踪、resolveDisplayState、DND、wake poll、进程存活检测、session submenu |
+| `src/activity.js` | 活跃状态条、会话面板、重要状态卡三个 Electron 窗口的生命周期、IPC 与定位 |
+| `src/activity-model.js` | Agent 活跃状态、优先级、完成态 10 分钟保留和面板快照的数据模型 |
 | `src/server.js` | HTTP 服务：/state（GET 健康检查 + POST 状态更新）、/permission（权限 hook）、端口发现、hook 注册 |
 | `src/permission.js` | 权限气泡：BrowserWindow 创建/堆叠/销毁、allow/deny/suggestion 决策、PASSTHROUGH_TOOLS |
 | `src/updater.js` | 自动更新：electron-updater 懒加载、GitHub API 版本检查、更新对话框、菜单状态标签 |
@@ -134,10 +138,10 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 
 - **多会话追踪**：`sessions` Map 按 session_id 独立记录状态，`resolveDisplayState()` 取最高优先级
 - **状态优先级**：error(8) > notification(7) > sweeping(6) > attention(5) > carrying/juggling(4) > working(3) > thinking(2) > idle(1) > sleeping(0)
-- **最小显示时长**：防止快速闪切（error 5s、attention/notification 4s、carrying 3s、sweeping 2s、working/thinking 1s）
-- **单次性状态**：attention/error/sweeping/notification/carrying 显示后自动回退（AUTO_RETURN_MS）
+- **最小显示时长**：防止快速闪切（error 5s、attention 4s、carrying 3s、sweeping 5.5s、working/thinking 1s）
+- **单次性状态**：attention/error/carrying 按动画时长自动回退；sweeping 最长保留 5 分钟；notification 立即显示并保持到下一次会话事件
 - **睡眠序列**：20s 鼠标静止 → idle-look → 60s → yawning(3s) → dozing → 10min → collapsing(0.8s) → sleeping；鼠标移动触发 waking(1.5s) → 恢复
-- **DND 模式**：右键菜单 / 托盘"休眠（免打扰）"→ 跳过 dozing 直接 yawning → collapsing → sleeping，屏蔽所有 hook 事件；唤醒后播放 waking 动画
+- **DND 模式**：右键菜单 / 托盘"休眠（免打扰）"→ 跳过 dozing 直接 yawning → collapsing → sleeping；静默桌宠动画、权限气泡和额度提醒，但继续维护活跃会话数据；唤醒后播放 waking 动画
 - **working 子动画**：1 个会话 → typing，2 个 → juggling，3+ → building
 - **juggling 子动画**：1 个 subagent → juggling，2+ → conducting
 
@@ -150,7 +154,7 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 - **动态高度**：bubble 通过 IPC `bubble-height` 上报实际渲染高度，主进程据此精确堆叠
 - **决策选项**：Allow（允许）、Deny（拒绝）、suggestion 按钮（如"始终允许"、"自动接受编辑"）
 - **客户端断连**：`res.on("close")` 检测 Claude Code 超时或用户在终端回答，自动清理气泡
-- **DND 模式**：休眠时自动 deny 所有权限请求，不弹气泡
+- **DND 模式**：休眠时不弹权限气泡，也不替用户做 allow/deny 决策；阻塞式 Claude Code 权限请求留在终端处理，活跃面板仍显示等待状态
 - **suggestion 格式**：支持 `addRules`（权限规则）和 `setMode`（切换模式）两种类型
 - **Codex 通知气泡**：Codex CLI 无法使用阻塞式 HTTP hook，通过 JSONL 日志检测 `exec_approval_request` / `apply_patch_approval_request` 触发通知气泡，仅提供 Dismiss 按钮（无 Allow/Deny），30 秒自动过期
 
@@ -181,8 +185,8 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 
 ### 点击反应系统（hit-renderer.js 检测 → main relay → renderer.js 播放）
 
-- 双击 → 戳反应（左/右方向检测，2.5s，react-left/react-right SVG）
-- 4 连击 → 双手拍反应（3.5s，react-double SVG）
+- 脸部 2 连击 → 随机播放 annoyed 或左/右张望反应
+- 脸部 4 连击 → 随机播放水果小队、惊跳或青苹果变身（6s）
 - 拖拽 → 拖拽反应（持续到松手）
 - 拖拽判定：鼠标位移 > 3px（DRAG_THRESHOLD），否则视为点击
 - 输入检测在 hitWin，反应动画在 renderWin，通过 main IPC relay
@@ -246,8 +250,9 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 
 ## 素材规则
 
-- 项目使用的 SVG 在 `assets/svg/`（36 个，含 8 个 mini mode），GIF 在 `assets/gif/`（文档展示用）
-- 需要编辑的素材复制到 `assets/source/` 再修改
+- 项目运行时 SVG 只放在 `assets/svg/` 根目录（39 个，含 8 个 mini mode），GIF 在 `assets/gif/` 且仅用于 README / gallery 展示
+- 历史版本、旧命名副本和原版参考不放在运行素材目录；需要回溯时使用 Git 历史，临时编辑文件放到仓库外
+- `npm run generate:gifs` 只生成当前文档实际使用的预览名称，新增预览时同步补充 README 或 gallery 引用
 - SVG 用 `<object type="image/svg+xml">` 渲染——因为需要访问 SVG 内部 DOM（眼球追踪），`<img>` 无法做到
 - SVG 内部约定 ID：`#eyes-js`（眼球）、`#body-js`（身体）、`#shadow-js`（影子）供 JS 操作
 
@@ -267,6 +272,7 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 - 敏感信息只放 `.env`，禁止硬编码
 - 注册 Claude Code hook 时必须**追加**到已有 hook 数组，不能覆盖
 - HTTP 服务端口范围 `127.0.0.1:23333-23337`，运行时端口写入 `~/.clawd/runtime.json`，退出时清理；全部占用时降级为 idle-only 模式
+- `POST /state` 与 `POST /permission` 使用 `~/.clawd/auth-token` 鉴权；该文件仅当前用户可读，不要输出到日志或提交到仓库
 - hook 脚本仅依赖 Node 内置模块 + 同目录的 `server-config.js`（端口发现/签名验证），禁止引入三方包
 - main.js 启动时自动调用 `registerHooks({ silent: true })` 注册缺失的 hooks
 - PermissionRequest 必须用 HTTP hook（阻塞式），其他事件用 command hook（非阻塞式）

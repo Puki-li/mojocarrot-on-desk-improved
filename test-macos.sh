@@ -41,6 +41,8 @@ detect_port() {
 
 PORT="$(detect_port || true)"
 BASE="http://127.0.0.1:$PORT"
+AUTH_TOKEN=$(tr -d '\r\n' < "$HOME/.clawd/auth-token" 2>/dev/null || true)
+AUTH_HEADER=( -H "x-clawd-token: $AUTH_TOKEN" )
 HOOK="hooks/clawd-hook.js"
 BOLD='\033[1m'
 DIM='\033[2m'
@@ -60,6 +62,10 @@ header "0" "Pre-flight checks"
 
 if [ -z "$PORT" ]; then
   fail "Clawd not found on ports 23333-23337. Start the app first: npm start"
+  exit 1
+fi
+if [ -z "$AUTH_TOKEN" ]; then
+  fail "Mojocarrot auth token not found. Restart the app first."
   exit 1
 fi
 pass "Clawd HTTP server is reachable on port $PORT"
@@ -94,6 +100,7 @@ sleep 0.5
 
 # Check if the state server received it
 CURL_RESULT=$(curl -s -X POST "$BASE/state" \
+  "${AUTH_HEADER[@]}" \
   -H "Content-Type: application/json" \
   -d '{"state":"idle","session_id":"macos-test-probe"}' 2>&1)
 
@@ -153,6 +160,7 @@ TERM_PID=$(ps -o ppid= -p $$ | tr -d ' ')
 info "Registering session with source_pid=$TERM_PID"
 
 curl -s -X POST "$BASE/state" \
+  "${AUTH_HEADER[@]}" \
   -H "Content-Type: application/json" \
   -d '{"state":"working","session_id":"focus-test","event":"PreToolUse","source_pid":'"$TERM_PID"',"cwd":"'"$(pwd)"'"}' > /dev/null
 
@@ -201,6 +209,7 @@ echo -e "  ${YELLOW}>>> A permission bubble should appear in the bottom-right <<
 # macOS doesn't have GNU timeout; use perl one-liner as fallback
 _timeout() { perl -e 'alarm shift; exec @ARGV' "$@"; }
 PERM_RESPONSE=$(_timeout 15 curl -s -X POST "$BASE/permission" \
+  "${AUTH_HEADER[@]}" \
   -H "Content-Type: application/json" \
   -d '{
     "tool_name": "Bash",
@@ -225,10 +234,12 @@ header "5" "Session Dashboard — Cmd+Click"
 
 info "Creating 2 test sessions for dashboard..."
 curl -s -X POST "$BASE/state" \
+  "${AUTH_HEADER[@]}" \
   -H "Content-Type: application/json" \
   -d '{"state":"working","session_id":"dash-1","event":"PreToolUse","source_pid":'"$TERM_PID"',"cwd":"/Users/test/project-alpha"}' > /dev/null
 
 curl -s -X POST "$BASE/state" \
+  "${AUTH_HEADER[@]}" \
   -H "Content-Type: application/json" \
   -d '{"state":"thinking","session_id":"dash-2","event":"UserPromptSubmit","source_pid":'"$TERM_PID"',"cwd":"/Users/test/project-beta"}' > /dev/null
 
@@ -256,18 +267,23 @@ header "✓" "Cleanup"
 
 # Clean up test sessions
 curl -s -X POST "$BASE/state" \
+  "${AUTH_HEADER[@]}" \
   -H "Content-Type: application/json" \
   -d '{"state":"sleeping","session_id":"macos-test","event":"SessionEnd"}' > /dev/null
 curl -s -X POST "$BASE/state" \
+  "${AUTH_HEADER[@]}" \
   -H "Content-Type: application/json" \
   -d '{"state":"sleeping","session_id":"focus-test","event":"SessionEnd"}' > /dev/null
 curl -s -X POST "$BASE/state" \
+  "${AUTH_HEADER[@]}" \
   -H "Content-Type: application/json" \
   -d '{"state":"sleeping","session_id":"dash-1","event":"SessionEnd"}' > /dev/null
 curl -s -X POST "$BASE/state" \
+  "${AUTH_HEADER[@]}" \
   -H "Content-Type: application/json" \
   -d '{"state":"sleeping","session_id":"dash-2","event":"SessionEnd"}' > /dev/null
 curl -s -X POST "$BASE/state" \
+  "${AUTH_HEADER[@]}" \
   -H "Content-Type: application/json" \
   -d '{"state":"sleeping","session_id":"macos-test-probe","event":"SessionEnd"}' > /dev/null
 

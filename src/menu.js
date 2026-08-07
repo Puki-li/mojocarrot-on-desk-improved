@@ -498,6 +498,7 @@ module.exports = function initMenu(ctx) {
     ctx.lang = newLang;
     rebuildAllMenus();
     ctx.savePrefs();
+    if (typeof ctx.onLanguageChanged === "function") ctx.onLanguageChanged();
   }
 
   function resizeWindow(sizeKey) {

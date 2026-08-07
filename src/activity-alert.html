@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self';">
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="activity.css">
+  <title>重要状态</title>
+</head>
+<body class="activity-alert-window">
+  <main class="activity-alert" id="activityAlert" data-kind="completed">
+    <button class="alert-main" id="alertMain" type="button">
+      <span class="alert-icon" id="alertIcon" aria-hidden="true">✓</span>
+      <span class="alert-copy">
+        <span class="alert-source" id="alertSource">Codex</span>
+        <strong class="alert-message" id="alertMessage">本轮响应已完成</strong>
+      </span>
+    </button>
+    <button class="alert-close" id="alertClose" type="button" aria-label="关闭提醒">×</button>
+  </main>
+  <script src="activity-alert-renderer.js"></script>
+</body>
+</html>

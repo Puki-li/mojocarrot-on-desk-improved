@@ -1,11 +1,10 @@
 {
   "name": "mojocarrot-on-desk",
-  "version": "0.5.9",
+  "version": "1.0.0",
   "description": "A Mojocarrot-themed desktop pet derived from rullerzhou-afk/clawd-on-desk that reacts to your AI coding agent sessions in real-time.",
   "main": "src/main.js",
   "scripts": {
     "start": "node launch.js",
-    "generate:mojocarrot": "node scripts/generate-mojocarrot-svgs.js",
     "generate:gifs": "electron scripts/generate-readme-gifs.js",
     "build": "electron-builder --win",
     "build:mac": "electron-builder --mac",

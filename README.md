@@ -43,6 +43,10 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. This pr
 
 ### Session Intelligence
 - **Multi-session tracking** — sessions across all agents resolve to the highest-priority state
+- **Always-visible activity pill** — shows `Idle`, `DND`, or the dominant agent plus the number of other active sessions; click it to open the activity panel
+- **Activity panel** — lists current sessions across Codex, Claude Code, Cursor, Copilot, and Gemini; turn-complete sessions remain visible for 5 minutes and duplicate completion rows are collapsed
+- **Codex weekly usage** — the activity panel emphasizes the remaining weekly percentage and shows the local reset date, weekday, and time
+- **Important status card** — waiting input, errors, completions, and Codex 20%/10% quota thresholds use a single priority-based alert card
 - **Subagent awareness** — juggling for 1 subagent, conducting for 2+
 - **Terminal focus** — right-click Mojocarrot → Sessions menu to jump to a specific session's terminal window; notification/attention states auto-focus the relevant terminal
 - **Process liveness detection** — detects crashed/exited agent processes (Claude Code, Codex, Copilot) and cleans up orphan sessions
@@ -53,7 +57,7 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. This pr
 - **Position memory** — Mojocarrot remembers where you left it across restarts (including mini mode)
 - **Single instance lock** — prevents duplicate app windows
 - **Auto-start** — Claude Code's SessionStart hook can launch Mojocarrot on Desk automatically if it's not running
-- **Do Not Disturb** — right-click or tray menu to enter sleep mode; all hook events are silenced until you wake Mojocarrot
+- **Do Not Disturb** — right-click or use the tray menu to sleep and suppress Mojocarrot animations, permission bubbles, and quota reminders; permission decisions remain in the agent terminal
 - **System tray** — resize (S/M/L), DND mode, language switch, auto-start, check for updates
 - **i18n** — English and Chinese UI; switch via right-click menu or tray
 - **Auto-update** — checks GitHub releases; Windows installs NSIS updates on quit, macOS opens the release page, Linux requires manual download
@@ -162,6 +166,8 @@ Host my-server
 
 Remote hooks run in `CLAWD_REMOTE` mode which skips PID collection (remote PIDs are meaningless locally). Terminal focus is not available for remote sessions.
 
+State and permission POSTs are authenticated. For remote use, provision the value from the local `~/.clawd/auth-token` as `CLAWD_AUTH_TOKEN` in the trusted remote shell before registering hooks or starting the Codex monitor. The token is intentionally not printed or copied automatically by the deploy script.
+
 > Thanks to [@Magic-Bytes](https://github.com/Magic-Bytes) for the original SSH tunneling idea ([#9](https://github.com/rullerzhou-afk/clawd-on-desk/issues/9)).
 
 ### macOS Notes
@@ -187,7 +193,7 @@ Remote hooks run in `CLAWD_REMOTE` mode which skips PID collection (remote PIDs 
 | **Copilot CLI: manual hook setup** | Copilot hooks require manually creating `~/.copilot/hooks/hooks.json`. Claude Code and Codex work out of the box. |
 | **Copilot CLI: no permission bubble** | Copilot's `preToolUse` hook only supports deny, not the full allow/deny flow. Permission bubbles only work with Claude Code. |
 | **macOS/Linux auto-update** | No Apple code signing on macOS, no auto-update on Linux — download updates manually from GitHub Releases. |
-| **No test framework for Electron** | Unit tests cover agents and log polling, but the Electron main process (state machine, windows, tray) has no automated tests. |
+| **Electron window behavior still needs manual testing** | Unit tests cover agents, log polling, and key state-machine behavior; transparent windows, tray integration, and cross-platform focus still require manual verification. |
 
 ## Acknowledgments
 

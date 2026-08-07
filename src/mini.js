@@ -231,12 +231,9 @@ function exitMiniMode() {
     ctx.buildContextMenu();
     ctx.buildTrayMenu();
     if (ctx.doNotDisturb) {
-      ctx.doNotDisturb = false;
-      ctx.sendToRenderer("dnd-change", false);
-      ctx.sendToHitWin("hit-state-sync", { dndEnabled: false });
-      ctx.buildContextMenu();
-      ctx.buildTrayMenu();
-      ctx.applyState("waking");
+      // Mini mode controls layout; DND controls notifications and activity.
+      // Leaving mini mode must not implicitly wake the pet or clear DND.
+      ctx.applyState("sleeping");
     } else {
       const resolved = ctx.resolveDisplayState();
       ctx.applyState(resolved, ctx.getSvgOverride(resolved));
