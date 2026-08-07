@@ -179,6 +179,10 @@ button {
   -webkit-app-region: no-drag;
 }
 
+.activity-status[data-compact="true"] {
+  min-width: 86px;
+}
+
 .activity-status:hover {
   border-color: var(--border-strong);
   background: var(--surface-solid);

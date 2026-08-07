@@ -78,6 +78,8 @@ test("activity controller keeps the status pill visible and opens the panel on d
   assert.deepStrictEqual(windows[0].webContents.messages.at(-1)[0], "activity:snapshot");
   ipcMain.emit("activity:status-size", { sender: windows[0].webContents }, { width: 100, height: 44 });
   assert.equal(windows[0].bounds.width, 128, "status pill keeps a readable minimum width");
+  ipcMain.emit("activity:status-size", { sender: windows[0].webContents }, { width: 90, height: 44, compact: true });
+  assert.equal(windows[0].bounds.width, 96, "Idle can use its compact minimum width");
   assert.equal(windows[0].bounds.height, 44);
   ipcMain.emit("activity:status-size", { sender: windows[0].webContents }, { width: 180, height: 44 });
   assert.equal(windows[0].bounds.width, 180, "status pill follows valid rendered content width");

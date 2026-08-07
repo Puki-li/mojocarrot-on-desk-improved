@@ -9,6 +9,7 @@ const {
 
 const STATUS_SIZE = Object.freeze({ width: 230, height: 56 });
 const STATUS_MIN_SIZE = Object.freeze({ width: 128, height: 36 });
+const IDLE_STATUS_MIN_SIZE = Object.freeze({ width: 96, height: 36 });
 const PANEL_DEFAULT_SIZE = Object.freeze({ width: 430, height: 500 });
 const ALERT_SIZE = Object.freeze({ width: 430, height: 150 });
 
@@ -151,9 +152,10 @@ module.exports = function initActivity(ctx) {
       const width = Math.round(Number(nextSize.width));
       const height = Math.round(Number(nextSize.height));
       if (!Number.isFinite(width) || !Number.isFinite(height)) return;
+      const minSize = nextSize.compact === true ? IDLE_STATUS_MIN_SIZE : STATUS_MIN_SIZE;
       statusSize = {
-        width: strictClamp(width, STATUS_MIN_SIZE.width, STATUS_SIZE.width),
-        height: strictClamp(height, STATUS_MIN_SIZE.height, STATUS_SIZE.height),
+        width: strictClamp(width, minSize.width, STATUS_SIZE.width),
+        height: strictClamp(height, minSize.height, STATUS_SIZE.height),
       };
       if (!statusWin.isDestroyed()) statusWin.setSize(statusSize.width, statusSize.height, false);
       reposition();

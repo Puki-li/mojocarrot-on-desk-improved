@@ -8,8 +8,10 @@
   function render(snapshot) {
     const normalized = viewModel.normalizeSnapshot(snapshot);
     const text = viewModel.getStatusText(normalized);
+    const compact = text === "Idle";
     statusLabel.textContent = text;
     statusButton.dataset.tone = viewModel.getStatusTone(normalized.status);
+    statusButton.dataset.compact = compact ? "true" : "false";
     statusButton.setAttribute("aria-label", normalized.lang === "en"
       ? `${text}, open active sessions`
       : `${text}，打开活跃会话`);
@@ -20,7 +22,7 @@
       scrollWidth: statusButton.scrollWidth,
       borderWidth: Math.max(0, statusButton.offsetWidth - statusButton.clientWidth),
     });
-    window.activityAPI.reportStatusSize(size.width, size.height);
+    window.activityAPI.reportStatusSize(size.width, size.height, compact);
   }
 
   statusButton.addEventListener("click", () => window.activityAPI.togglePanel());

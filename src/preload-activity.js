@@ -26,7 +26,9 @@ contextBridge.exposeInMainWorld("activityAPI", {
   },
   focusAlert: () => ipcRenderer.send("activity:focus-alert"),
   dismissAlert: () => ipcRenderer.send("activity:dismiss-alert"),
-  reportStatusSize: (width, height) => ipcRenderer.send("activity:status-size", { width, height }),
+  reportStatusSize: (width, height, compact = false) => {
+    ipcRenderer.send("activity:status-size", { width, height, compact: compact === true });
+  },
   reportPanelSize: (width, height) => ipcRenderer.send("activity:panel-size", { width, height }),
   showContextMenu: () => ipcRenderer.send("activity:show-context-menu"),
 });
