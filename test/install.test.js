@@ -190,6 +190,25 @@ describe("Hook installer version compatibility", () => {
     assert.strictEqual(result.updated, 0);
   });
 
+  it("keeps settings private even when registered hooks are unchanged", () => {
+    const settingsPath = makeTempSettings({});
+    const options = {
+      silent: true,
+      settingsPath,
+      claudeVersionInfo: { version: "2.1.78", source: "test", status: "known" },
+    };
+    registerHooks(options);
+    if (process.platform !== "win32") fs.chmodSync(settingsPath, 0o644);
+
+    const result = registerHooks(options);
+
+    assert.strictEqual(result.added, 0);
+    assert.strictEqual(result.updated, 0);
+    if (process.platform !== "win32") {
+      assert.strictEqual(fs.statSync(settingsPath).mode & 0o777, 0o600);
+    }
+  });
+
   it("checks macOS absolute Claude paths before PATH fallback", () => {
     const attempted = [];
     const expectedPath = path.join("/Users/tester", ".claude", "local", "claude");

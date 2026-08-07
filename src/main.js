@@ -1047,6 +1047,8 @@ if (!gotTheLock) {
       _codexQuotaSource = new CodexQuotaSource({
         onUpdate: handleCodexQuotaUpdate,
         continuousPolling: false,
+        asyncInitialPoll: true,
+        onError: (err) => console.warn("Clawd: Codex quota scan failed:", err.message),
       });
       _codexQuotaSource.start();
     } catch (err) {

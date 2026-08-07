@@ -7,7 +7,10 @@ const path = require("path");
 const os = require("os");
 const { resolveCodexEventState } = require("../hooks/codex-event-map");
 
-const APPROVAL_HEURISTIC_MS = 2000;
+const IN_FLIGHT_HEARTBEAT_MS = 30000;
+const MAX_IN_FLIGHT_STALE_MS = 6 * 60 * 60 * 1000;
+const FULL_DIRECTORY_SCAN_MS = 60000;
+const DEFAULT_MAX_READ_BYTES_PER_POLL = 256 * 1024;
 
 class CodexLogMonitor {
   /**
@@ -23,6 +26,7 @@ class CodexLogMonitor {
     // Map<filePath, { offset, sessionId, cwd, lastEventTime, lastState, partial }>
     this._tracked = new Map();
     this._baseDir = this._resolveBaseDir();
+    this._lastFullDirectoryScan = 0;
   }
 
   _resolveBaseDir() {
@@ -50,14 +54,16 @@ class CodexLogMonitor {
       clearInterval(this._interval);
       this._interval = null;
     }
-    for (const tracked of this._tracked.values()) {
-      if (tracked.approvalTimer) clearTimeout(tracked.approvalTimer);
-    }
     this._tracked.clear();
   }
 
   _poll(recoverExisting = false) {
-    const dirs = this._getSessionDirs();
+    const now = Date.now();
+    const allDirs = this._getSessionDirs();
+    const includeArchive = recoverExisting || now - this._lastFullDirectoryScan >= FULL_DIRECTORY_SCAN_MS;
+    const dirs = new Set(includeArchive ? allDirs : allDirs.slice(0, 1));
+    if (includeArchive) this._lastFullDirectoryScan = now;
+    for (const filePath of this._tracked.keys()) dirs.add(path.dirname(filePath));
     for (const dir of dirs) {
       let files;
       try {
@@ -65,7 +71,6 @@ class CodexLogMonitor {
       } catch {
         continue; // directory doesn't exist yet
       }
-      const now = Date.now();
       for (const file of files) {
         if (!file.startsWith("rollout-") || !file.endsWith(".jsonl")) continue;
         const filePath = path.join(dir, file);
@@ -123,25 +128,63 @@ class CodexLogMonitor {
         isSubagent: false,
         reported: false,
         lastEventKey: null,
+        turnInFlight: false,
+        inFlightStartedAt: 0,
+        lastHeartbeatAt: 0,
+        device: stat.dev,
+        inode: stat.ino,
+        mtimeMs: stat.mtimeMs,
+        recovering: isRecoveryRead,
+        recoveryTargetOffset: isRecoveryRead ? stat.size : 0,
       };
       this._tracked.set(filePath, tracked);
     }
 
-    // No new data
-    if (stat.size <= tracked.offset) return;
+    const identityChanged = tracked.device !== stat.dev || tracked.inode !== stat.ino;
+    const rewrittenAtSameSize = stat.size === tracked.offset && stat.mtimeMs > tracked.mtimeMs;
+    if (identityChanged || stat.size < tracked.offset || rewrittenAtSameSize) {
+      tracked.offset = 0;
+      tracked.partial = "";
+      tracked.device = stat.dev;
+      tracked.inode = stat.ino;
+      if (tracked.recovering) tracked.recoveryTargetOffset = stat.size;
+    }
+
+    // No new data. Refresh the state machine while a turn is explicitly open
+    // so a legitimate long model/tool run is not mistaken for an idle session.
+    const readableEnd = tracked.recovering
+      ? Math.min(stat.size, tracked.recoveryTargetOffset)
+      : stat.size;
+    if (readableEnd === tracked.offset) {
+      tracked.mtimeMs = stat.mtimeMs;
+      this._finishRecovery(tracked);
+      this._refreshInFlight(tracked);
+      return;
+    }
 
     // Read incremental bytes
     let buf;
+    let fd;
     try {
-      const fd = fs.openSync(filePath, "r");
-      const readLen = stat.size - tracked.offset;
+      fd = fs.openSync(filePath, "r");
+      const configuredMax = this._config.logConfig.maxReadBytesPerPoll;
+      const maxReadBytes = Number.isInteger(configuredMax) && configuredMax > 0
+        ? configuredMax
+        : DEFAULT_MAX_READ_BYTES_PER_POLL;
+      const readLen = Math.min(readableEnd - tracked.offset, maxReadBytes);
       buf = Buffer.alloc(readLen);
-      fs.readSync(fd, buf, 0, readLen, tracked.offset);
-      fs.closeSync(fd);
+      const bytesRead = fs.readSync(fd, buf, 0, readLen, tracked.offset);
+      if (bytesRead <= 0) return;
+      if (bytesRead < buf.length) buf = buf.subarray(0, bytesRead);
     } catch {
       return;
+    } finally {
+      if (fd !== undefined) {
+        try { fs.closeSync(fd); } catch {}
+      }
     }
-    tracked.offset = stat.size;
+    tracked.offset += buf.length;
+    tracked.mtimeMs = stat.mtimeMs;
 
     // Split into lines, handle partial last line
     const text = tracked.partial + buf.toString("utf8");
@@ -151,14 +194,20 @@ class CodexLogMonitor {
 
     for (const line of lines) {
       if (!line.trim()) continue;
-      this._processLine(line, tracked, !isRecoveryRead);
+      this._processLine(line, tracked, !tracked.recovering);
     }
 
+    this._finishRecovery(tracked);
+  }
+
+  _finishRecovery(tracked) {
+    if (!tracked.recovering || tracked.offset < tracked.recoveryTargetOffset) return;
+    tracked.recovering = false;
     // On startup, recover only the final active state. Completed/idle history
-    // is intentionally silent; subsequent appended events remain real-time.
-    if (isRecoveryRead && !tracked.isSubagent &&
-        (tracked.lastState === "working" || tracked.lastState === "thinking")) {
+    // is intentionally silent; appended events after the snapshot are real-time.
+    if (!tracked.isSubagent && (tracked.lastState === "working" || tracked.lastState === "thinking")) {
       tracked.reported = true;
+      tracked.lastHeartbeatAt = Date.now();
       this._onStateChange(tracked.sessionId, tracked.lastState, tracked.lastEventKey || "recovered", {
         cwd: tracked.cwd,
         sourcePid: null,
@@ -205,13 +254,14 @@ class CodexLogMonitor {
     // user-visible sessions, and must never generate completion alerts.
     if (tracked.isSubagent) return;
 
-    // Approval heuristic: exec_command_end or function_call_output means command finished —
-    // clear pending approval timer (these events are not in logEventMap)
-    if (key === "event_msg:exec_command_end" || key === "response_item:function_call_output") {
-      if (tracked.approvalTimer) {
-        clearTimeout(tracked.approvalTimer);
-        tracked.approvalTimer = null;
-      }
+    const now = Date.now();
+    tracked.lastEventTime = now;
+    if (key === "event_msg:task_started" || key === "event_msg:user_message") {
+      tracked.turnInFlight = true;
+      tracked.inFlightStartedAt = now;
+    } else if (key === "event_msg:task_complete" || key === "event_msg:turn_aborted") {
+      tracked.turnInFlight = false;
+      tracked.inFlightStartedAt = 0;
     }
 
     const mappedState = this._config.logEventMap[key];
@@ -221,12 +271,7 @@ class CodexLogMonitor {
 
     // Turn-end: happy if tools were used this turn, idle otherwise.
     if (mappedState === "codex-turn-end") {
-      if (tracked.approvalTimer) {
-        clearTimeout(tracked.approvalTimer);
-        tracked.approvalTimer = null;
-      }
       tracked.lastState = state;
-      tracked.lastEventTime = Date.now();
       if (emit) {
         tracked.reported = true;
         this._onStateChange(tracked.sessionId, state, key, {
@@ -238,37 +283,33 @@ class CodexLogMonitor {
       return;
     }
 
-    // Approval heuristic: function_call starts a 2s timer — if no exec_command_end arrives,
-    // assume Codex is waiting for user approval and emit codex-permission
-    if (emit && key === "response_item:function_call") {
-      if (tracked.approvalTimer) clearTimeout(tracked.approvalTimer);
-      const cmd = this._extractShellCommand(payload);
-      if (cmd) {
-        tracked.approvalTimer = setTimeout(() => {
-          tracked.approvalTimer = null;
-          tracked.lastEventTime = Date.now();
-          tracked.reported = true;
-          this._onStateChange(tracked.sessionId, "codex-permission", key, {
-            cwd: tracked.cwd,
-            sourcePid: null,
-            agentPid: null,
-            permissionDetail: { command: cmd, rawPayload: payload },
-          });
-        }, APPROVAL_HEURISTIC_MS);
-      }
-    }
-
     tracked.lastState = state;
-    tracked.lastEventTime = Date.now();
 
     if (emit) {
       tracked.reported = true;
+      tracked.lastHeartbeatAt = now;
       this._onStateChange(tracked.sessionId, state, key, {
         cwd: tracked.cwd,
         sourcePid: null, // JSONL doesn't contain terminal PID
         agentPid: null, // can't reliably match from log file
       });
     }
+  }
+
+  _refreshInFlight(tracked) {
+    if (!tracked.turnInFlight || !tracked.reported) return;
+    const now = Date.now();
+    if (now - tracked.inFlightStartedAt > MAX_IN_FLIGHT_STALE_MS) return;
+    if (now - tracked.lastHeartbeatAt < IN_FLIGHT_HEARTBEAT_MS) return;
+    const state = tracked.lastState === "working" ? "working" : "thinking";
+    tracked.lastHeartbeatAt = now;
+    tracked.lastEventTime = now;
+    this._onStateChange(tracked.sessionId, state, "codex-heartbeat", {
+      cwd: tracked.cwd,
+      sourcePid: null,
+      agentPid: null,
+      heartbeat: true,
+    });
   }
 
   // Extract shell command from function_call payload
@@ -301,8 +342,11 @@ class CodexLogMonitor {
     for (const [filePath, tracked] of this._tracked) {
       const age = now - tracked.lastEventTime;
       if (age > 300000) {
+        if (tracked.turnInFlight && now - tracked.inFlightStartedAt <= MAX_IN_FLIGHT_STALE_MS) {
+          this._refreshInFlight(tracked);
+          continue;
+        }
         // 5 min stale — notify session end and stop tracking
-        if (tracked.approvalTimer) clearTimeout(tracked.approvalTimer);
         if (!tracked.isSubagent && tracked.reported) {
           this._onStateChange(tracked.sessionId, "sleeping", "stale-cleanup", {
             cwd: tracked.cwd,

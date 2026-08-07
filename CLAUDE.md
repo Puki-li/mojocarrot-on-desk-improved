@@ -24,6 +24,7 @@ npm test               # 运行单元测试（node --test test/*.test.js）
 ```bash
 curl -X POST http://127.0.0.1:23333/state \
   -H "Content-Type: application/json" \
+  -H "x-clawd-token: $(tr -d '\r\n' < ~/.clawd/auth-token)" \
   -d '{"state":"working","svg":"clawd-working-building.svg"}'
 ```
 
@@ -270,6 +271,7 @@ Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
 - 敏感信息只放 `.env`，禁止硬编码
 - 注册 Claude Code hook 时必须**追加**到已有 hook 数组，不能覆盖
 - HTTP 服务端口范围 `127.0.0.1:23333-23337`，运行时端口写入 `~/.clawd/runtime.json`，退出时清理；全部占用时降级为 idle-only 模式
+- `POST /state` 与 `POST /permission` 使用 `~/.clawd/auth-token` 鉴权；该文件仅当前用户可读，不要输出到日志或提交到仓库
 - hook 脚本仅依赖 Node 内置模块 + 同目录的 `server-config.js`（端口发现/签名验证），禁止引入三方包
 - main.js 启动时自动调用 `registerHooks({ silent: true })` 注册缺失的 hooks
 - PermissionRequest 必须用 HTTP hook（阻塞式），其他事件用 command hook（非阻塞式）

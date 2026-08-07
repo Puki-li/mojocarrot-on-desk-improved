@@ -7,6 +7,7 @@ const {
   CodexQuotaSource,
   createThresholdCycleKey,
   findLatestQuota,
+  findLatestQuotaAsync,
   parseQuotaLine,
   parseQuotaObject,
   selectLongestWindow,
@@ -162,6 +163,25 @@ describe("Codex quota data source", () => {
     assert.strictEqual(findLatestQuota({ sessionDir: path.join(tmpDir, "missing") }), null);
   });
 
+  it("bounds startup discovery to recent date directories", () => {
+    const calls = [];
+    const fsImpl = Object.create(fs);
+    fsImpl.readdirSync = (directory, options) => {
+      calls.push(directory);
+      return fs.readdirSync(directory, options);
+    };
+    findLatestQuota({
+      sessionDir: tmpDir,
+      fs: fsImpl,
+      recentDays: 2,
+      now: new Date(2026, 7, 7),
+    });
+    assert.deepStrictEqual(calls, [
+      path.join(tmpDir, "2026", "08", "07"),
+      path.join(tmpDir, "2026", "08", "06"),
+    ]);
+  });
+
   it("can ingest live lines, dedupe updates, and retain the latest snapshot", () => {
     const updates = [];
     const source = new CodexQuotaSource({ onUpdate: (quota) => updates.push(quota) });
@@ -210,5 +230,39 @@ describe("Codex quota data source", () => {
 
     assert.strictEqual(initial.remainingPercent, 45);
     assert.strictEqual(updates.length, 1);
+  });
+
+  it("supports an asynchronous startup scan without blocking start", async () => {
+    let releaseScan;
+    const scan = new Promise((resolve) => { releaseScan = resolve; });
+    const updates = [];
+    const source = new CodexQuotaSource({
+      asyncInitialPoll: true,
+      continuousPolling: false,
+      findLatestQuotaAsync: () => scan,
+      onUpdate: (quota) => updates.push(quota),
+    });
+    assert.strictEqual(source.start(), null);
+    assert.strictEqual(updates.length, 0);
+    const quota = parseQuotaObject(makeTokenCount({
+      primary: quotaWindow(30, 10080, 1786172497),
+    }));
+    releaseScan(quota);
+    await source.pollAsync();
+    assert.strictEqual(source.getSnapshot().remainingPercent, 70);
+    assert.strictEqual(updates.length, 1);
+  });
+
+  it("finds quota through the asynchronous file scanner", async () => {
+    const file = path.join(sessionDir, "rollout-async.jsonl");
+    fs.writeFileSync(file, JSON.stringify(makeTokenCount({
+      primary: quotaWindow(25, 10080, 1786172497),
+    })) + "\n");
+    const quota = await findLatestQuotaAsync({
+      sessionDir: tmpDir,
+      recentDays: 2,
+      now: new Date(2026, 7, 7),
+    });
+    assert.strictEqual(quota.remainingPercent, 75);
   });
 });

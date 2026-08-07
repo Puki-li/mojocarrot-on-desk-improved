@@ -166,6 +166,8 @@ Host my-server
 
 Remote hooks run in `CLAWD_REMOTE` mode which skips PID collection (remote PIDs are meaningless locally). Terminal focus is not available for remote sessions.
 
+State and permission POSTs are authenticated. For remote use, provision the value from the local `~/.clawd/auth-token` as `CLAWD_AUTH_TOKEN` in the trusted remote shell before registering hooks or starting the Codex monitor. The token is intentionally not printed or copied automatically by the deploy script.
+
 > Thanks to [@Magic-Bytes](https://github.com/Magic-Bytes) for the original SSH tunneling idea ([#9](https://github.com/rullerzhou-afk/clawd-on-desk/issues/9)).
 
 ### macOS Notes

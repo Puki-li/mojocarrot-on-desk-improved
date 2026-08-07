@@ -1,6 +1,11 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert");
-const { resolvePostToolUseFailureState, shouldForwardClaudeHook } = require("../hooks/clawd-hook-lib");
+const {
+  parseWmicList,
+  queryWindowsProcess,
+  resolvePostToolUseFailureState,
+  shouldForwardClaudeHook,
+} = require("../hooks/clawd-hook-lib");
 
 describe("clawd-hook PostToolUseFailure filter", () => {
   it("downgrades Bash tool failures to working (routine non-zero exit)", () => {
@@ -29,5 +34,31 @@ describe("clawd-hook caller attribution", () => {
 
   it("keeps remote Claude hooks because remote process ancestry is unavailable", () => {
     assert.strictEqual(shouldForwardClaudeHook(true, null), true);
+  });
+});
+
+describe("clawd-hook Windows process lookup", () => {
+  it("parses WMIC list output without relying on comma positions", () => {
+    assert.deepStrictEqual(parseWmicList("CommandLine=node claude-code\r\nName=node.exe\r\nParentProcessId=42\r\n"), {
+      name: "node.exe",
+      parentPid: 42,
+      commandLine: "node claude-code",
+    });
+  });
+
+  it("falls back to PowerShell CIM when WMIC is unavailable", () => {
+    const commands = [];
+    const result = queryWindowsProcess(5535, (command) => {
+      commands.push(command);
+      if (command.startsWith("wmic ")) throw new Error("wmic missing");
+      return JSON.stringify({ Name: "claude.exe", ParentProcessId: 42, CommandLine: "claude --print" });
+    });
+    assert.equal(commands.length, 2);
+    assert.match(commands[1], /Get-CimInstance/);
+    assert.deepStrictEqual(result, {
+      name: "claude.exe",
+      parentPid: 42,
+      commandLine: "claude --print",
+    });
   });
 });

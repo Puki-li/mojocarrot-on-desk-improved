@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const Module = require("node:module");
 
-test("activity controller keeps the status pill visible and opens the panel on demand", () => {
+test("activity controller keeps the status pill visible and opens the panel on demand", async () => {
   const ipcMain = new EventEmitter();
   ipcMain.removeListener = EventEmitter.prototype.removeListener;
   const windows = [];
@@ -102,6 +102,16 @@ test("activity controller keeps the status pill visible and opens the panel on d
   controller.clearAlertForSession("waiting");
   assert.equal(windows[2].isVisible(), true, "next important status is promoted");
   assert.equal(windows[2].webContents.messages.at(-1)[1].kind, "error");
+
+  controller.hideAlert();
+  controller.showAlert({ kind: "waiting", priority: 4, durationMs: 0, sessionId: "blocking" });
+  controller.showAlert({
+    kind: "completed", priority: 2, durationMs: 5, sessionId: "old-complete",
+    agentLabel: "Codex", project: "repo",
+  });
+  await new Promise((resolve) => setTimeout(resolve, 15));
+  controller.clearAlertForSession("blocking");
+  assert.equal(windows[2].isVisible(), false, "expired queued alerts are not replayed later");
 
   controller.cleanup();
   assert.ok(windows.every((window) => window.isDestroyed()));

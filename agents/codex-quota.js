@@ -11,6 +11,7 @@ const DEFAULT_SESSION_DIR = "~/.codex/sessions";
 const DEFAULT_POLL_INTERVAL_MS = 30000;
 const DEFAULT_MAX_FILES = 50;
 const DEFAULT_MAX_READ_BYTES = 2 * 1024 * 1024;
+const DEFAULT_RECENT_DAYS = 31;
 
 function resolveHomePath(value, homedir = os.homedir()) {
   if (!value || value === "~") return value === "~" ? homedir : value;
@@ -156,23 +157,38 @@ function readFileTail(filePath, fsImpl, maxReadBytes) {
   }
 }
 
-function findRolloutFiles(sessionDir, fsImpl) {
-  const files = [];
+function getRecentSessionDirs(sessionDir, options = {}) {
+  const dirs = [];
+  const recentDays = Number.isInteger(options.recentDays) && options.recentDays > 0
+    ? options.recentDays
+    : DEFAULT_RECENT_DAYS;
+  const now = options.now instanceof Date ? options.now : new Date(options.now || Date.now());
 
-  function walk(directory, depth) {
-    if (depth > 4) return;
+  for (let daysAgo = 0; daysAgo < recentDays; daysAgo++) {
+    const date = new Date(now);
+    date.setDate(date.getDate() - daysAgo);
+    dirs.push(path.join(
+      sessionDir,
+      String(date.getFullYear()),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0")
+    ));
+  }
+  return dirs;
+}
+
+function findRolloutFiles(sessionDir, fsImpl, options = {}) {
+  const files = [];
+  for (const directory of getRecentSessionDirs(sessionDir, options)) {
     let entries;
     try {
       entries = fsImpl.readdirSync(directory, { withFileTypes: true });
     } catch {
-      return;
+      continue;
     }
-
     for (const entry of entries) {
       const fullPath = path.join(directory, entry.name);
-      if (entry.isDirectory()) {
-        walk(fullPath, depth + 1);
-      } else if (
+      if (
         entry.isFile() &&
         entry.name.startsWith("rollout-") &&
         entry.name.endsWith(".jsonl")
@@ -183,9 +199,54 @@ function findRolloutFiles(sessionDir, fsImpl) {
       }
     }
   }
-
-  walk(sessionDir, 0);
   return files.sort((a, b) => b.mtimeMs - a.mtimeMs);
+}
+
+async function readFileTailAsync(filePath, fsPromises, maxReadBytes) {
+  let handle;
+  try {
+    const stat = await fsPromises.stat(filePath);
+    if (!stat.isFile() || stat.size <= 0) return { text: "", mtimeMs: stat.mtimeMs };
+    const readLength = Math.min(stat.size, maxReadBytes);
+    const start = stat.size - readLength;
+    handle = await fsPromises.open(filePath, "r");
+    const buffer = Buffer.alloc(readLength);
+    const { bytesRead } = await handle.read(buffer, 0, readLength, start);
+    let text = buffer.subarray(0, bytesRead).toString("utf8");
+    if (start > 0) {
+      const firstNewline = text.indexOf("\n");
+      text = firstNewline >= 0 ? text.slice(firstNewline + 1) : "";
+    }
+    return { text, mtimeMs: stat.mtimeMs };
+  } catch {
+    return null;
+  } finally {
+    if (handle) {
+      try { await handle.close(); } catch {}
+    }
+  }
+}
+
+async function findRolloutFilesAsync(sessionDir, fsPromises, options = {}) {
+  const files = [];
+  for (const directory of getRecentSessionDirs(sessionDir, options)) {
+    let entries;
+    try {
+      entries = await fsPromises.readdir(directory, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.startsWith("rollout-") || !entry.name.endsWith(".jsonl")) continue;
+      const filePath = path.join(directory, entry.name);
+      try {
+        const stat = await fsPromises.stat(filePath);
+        files.push({ filePath, mtimeMs: stat.mtimeMs });
+      } catch {}
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  return files.sort((left, right) => right.mtimeMs - left.mtimeMs);
 }
 
 function findLatestQuota(options = {}) {
@@ -199,7 +260,10 @@ function findLatestQuota(options = {}) {
     ? options.maxReadBytes
     : DEFAULT_MAX_READ_BYTES;
 
-  const files = findRolloutFiles(sessionDir, fsImpl).slice(0, maxFiles);
+  const files = findRolloutFiles(sessionDir, fsImpl, {
+    recentDays: options.recentDays,
+    now: options.now,
+  }).slice(0, maxFiles);
   let latest = null;
 
   for (const file of files) {
@@ -218,6 +282,37 @@ function findLatestQuota(options = {}) {
     if (!latest || withSource.observedAtMs > latest.observedAtMs) latest = withSource;
   }
 
+  return latest;
+}
+
+async function findLatestQuotaAsync(options = {}) {
+  const homedir = options.homedir || os.homedir();
+  const sessionDir = resolveHomePath(options.sessionDir || DEFAULT_SESSION_DIR, homedir);
+  const maxFiles = Number.isInteger(options.maxFiles) && options.maxFiles > 0
+    ? options.maxFiles
+    : DEFAULT_MAX_FILES;
+  const maxReadBytes = Number.isInteger(options.maxReadBytes) && options.maxReadBytes > 0
+    ? options.maxReadBytes
+    : DEFAULT_MAX_READ_BYTES;
+  const fsPromises = options.fsPromises || fs.promises;
+  const files = (await findRolloutFilesAsync(sessionDir, fsPromises, options)).slice(0, maxFiles);
+  let latest = null;
+
+  for (const file of files) {
+    const tail = await readFileTailAsync(file.filePath, fsPromises, maxReadBytes);
+    if (!tail) continue;
+    const lines = tail.text.split("\n");
+    let fileQuota = null;
+    for (let index = lines.length - 1; index >= 0; index--) {
+      fileQuota = parseQuotaLine(lines[index], { fallbackObservedAtMs: tail.mtimeMs });
+      if (fileQuota) break;
+    }
+    if (fileQuota) {
+      const withSource = { ...fileQuota, sourceFile: file.filePath };
+      if (!latest || withSource.observedAtMs > latest.observedAtMs) latest = withSource;
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+  }
   return latest;
 }
 
@@ -244,13 +339,18 @@ class CodexQuotaSource {
       : DEFAULT_POLL_INTERVAL_MS;
     this._snapshot = null;
     this._interval = null;
+    this._pollPromise = null;
   }
 
   start() {
     if (this._interval) return this._snapshot;
-    this.poll();
+    if (this._options.asyncInitialPoll === true) this.pollAsync();
+    else this.poll();
     if (this._options.continuousPolling !== false) {
-      this._interval = setInterval(() => this.poll(), this._pollIntervalMs);
+      this._interval = setInterval(
+        () => this._options.asyncInitialPoll === true ? this.pollAsync() : this.poll(),
+        this._pollIntervalMs
+      );
     }
     return this._snapshot;
   }
@@ -267,6 +367,28 @@ class CodexQuotaSource {
       this._onUpdate(snapshot);
     }
     return this._snapshot;
+  }
+
+  pollAsync() {
+    if (this._pollPromise) return this._pollPromise;
+    const scan = typeof this._options.findLatestQuotaAsync === "function"
+      ? this._options.findLatestQuotaAsync
+      : findLatestQuotaAsync;
+    this._pollPromise = Promise.resolve()
+      .then(() => scan(this._options))
+      .then((snapshot) => {
+        if (snapshot && !snapshotsEqual(snapshot, this._snapshot)) {
+          this._snapshot = snapshot;
+          this._onUpdate(snapshot);
+        }
+        return this._snapshot;
+      })
+      .catch((err) => {
+        if (typeof this._options.onError === "function") this._options.onError(err);
+        return this._snapshot;
+      })
+      .finally(() => { this._pollPromise = null; });
+    return this._pollPromise;
   }
 
   ingestLine(line, metadata = {}) {
@@ -308,6 +430,7 @@ module.exports = {
   collectRateLimitWindows,
   createThresholdCycleKey,
   findLatestQuota,
+  findLatestQuotaAsync,
   parseQuotaLine,
   parseQuotaObject,
   resolveHomePath,

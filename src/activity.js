@@ -12,6 +12,7 @@ const STATUS_MIN_SIZE = Object.freeze({ width: 128, height: 36 });
 const IDLE_STATUS_MIN_SIZE = Object.freeze({ width: 96, height: 36 });
 const PANEL_DEFAULT_SIZE = Object.freeze({ width: 430, height: 500 });
 const ALERT_SIZE = Object.freeze({ width: 430, height: 150 });
+const MAX_ALERT_CANDIDATES = 20;
 
 function strictClamp(value, min, max) {
   if (max < min) return min;
@@ -231,24 +232,50 @@ module.exports = function initActivity(ctx) {
   }
 
   function getAlertKey(alert) {
+    if (alert.kind === "completed") {
+      return `completed:${alert.agentLabel || "agent"}:${alert.project || "project"}`;
+    }
     if (alert.sessionId) return `session:${alert.sessionId}`;
     if (typeof alert.key === "string" && alert.key) return `key:${alert.key}`;
     return `kind:${alert.kind || "status"}`;
   }
 
   function displayAlert(alert) {
+    const now = Date.now();
+    if (Number.isFinite(alert.expiresAt) && alert.expiresAt <= now) {
+      alertCandidates.delete(alert.key);
+      promoteHighestAlert();
+      return;
+    }
     currentAlert = alert;
     if (alertTimer) clearTimeout(alertTimer);
     alertTimer = null;
     reposition();
     sendAlert();
     alertWin.showInactive();
-    if (Number.isFinite(alert.durationMs) && alert.durationMs > 0) {
-      alertTimer = setTimeout(dismissCurrentAlert, alert.durationMs);
+    if (Number.isFinite(alert.expiresAt)) {
+      alertTimer = setTimeout(dismissCurrentAlert, Math.max(1, alert.expiresAt - now));
+    }
+  }
+
+  function pruneAlertCandidates() {
+    const now = Date.now();
+    for (const [key, alert] of alertCandidates) {
+      if (Number.isFinite(alert.expiresAt) && alert.expiresAt <= now && currentAlert?.key !== key) {
+        alertCandidates.delete(key);
+      }
+    }
+    if (alertCandidates.size <= MAX_ALERT_CANDIDATES) return;
+    const removable = [...alertCandidates.values()]
+      .filter((alert) => alert.key !== currentAlert?.key)
+      .sort((left, right) => left.priority - right.priority || left.sequence - right.sequence);
+    while (alertCandidates.size > MAX_ALERT_CANDIDATES && removable.length) {
+      alertCandidates.delete(removable.shift().key);
     }
   }
 
   function promoteHighestAlert() {
+    pruneAlertCandidates();
     if (!alertWin || alertWin.isDestroyed() || alertCandidates.size === 0) {
       currentAlert = null;
       if (alertWin && !alertWin.isDestroyed()) alertWin.hide();
@@ -268,8 +295,13 @@ module.exports = function initActivity(ctx) {
       key,
       priority: Number(alert.priority) || 0,
       sequence: ++alertSequence,
+      createdAt: Date.now(),
+      expiresAt: Number.isFinite(alert.durationMs) && alert.durationMs > 0
+        ? Date.now() + alert.durationMs
+        : null,
     };
     alertCandidates.set(key, candidate);
+    pruneAlertCandidates();
     if (!currentAlert || currentAlert.key === key || candidate.priority > currentAlert.priority) {
       displayAlert(candidate);
     }

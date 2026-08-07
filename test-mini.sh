@@ -4,6 +4,11 @@
 # 注意: 先 npm start 启动应用，再运行此脚本
 
 DELAY=${1:-6}
+AUTH_TOKEN=$(tr -d '\r\n' < "$HOME/.clawd/auth-token" 2>/dev/null || true)
+if [ -z "$AUTH_TOKEN" ]; then
+  echo "Mojocarrot auth token not found. Start the app first."
+  exit 1
+fi
 
 SVGS=(
   "clawd-mini-idle.svg"
@@ -30,6 +35,7 @@ for i in "${!SVGS[@]}"; do
   echo "[$((i+1))/${#SVGS[@]}] $state → $svg"
   curl -s -X POST http://127.0.0.1:23333/state \
     -H "Content-Type: application/json" \
+    -H "x-clawd-token: $AUTH_TOKEN" \
     -d "{\"state\":\"$state\",\"svg\":\"$svg\"}"
   sleep "$DELAY"
 done
@@ -38,6 +44,7 @@ echo ""
 echo "Returning to idle..."
 curl -s -X POST http://127.0.0.1:23333/state \
   -H "Content-Type: application/json" \
+  -H "x-clawd-token: $AUTH_TOKEN" \
   -d '{"state":"idle","svg":"clawd-idle-follow.svg"}'
 echo ""
 echo "=== DONE ==="

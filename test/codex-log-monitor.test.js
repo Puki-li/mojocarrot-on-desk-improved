@@ -267,6 +267,26 @@ describe("CodexLogMonitor", () => {
     }, 300);
   });
 
+  it("keeps every chunk of a large startup rollout in recovery mode", () => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    const padding = JSON.stringify({ type: "response_item", payload: { type: "reasoning", text: "x".repeat(300000) } });
+    fs.writeFileSync(testFile, [
+      '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
+      padding,
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
+      '{"type":"response_item","payload":{"type":"function_call","name":"shell_command"}}',
+      '{"type":"event_msg","payload":{"type":"task_complete"}}',
+    ].join("\n") + "\n");
+    const config = makeConfig(tmpDir);
+    config.logConfig.recoverExistingFiles = true;
+    const states = [];
+    monitor = new CodexLogMonitor(config, (_sid, state) => states.push(state));
+    monitor._poll(true);
+    monitor._poll(false);
+    monitor._poll(false);
+    assert.deepStrictEqual(states, [], "historical completion must remain silent across chunk boundaries");
+  });
+
   it("should handle incremental writes (tail behavior)", (_, done) => {
     const testFile = path.join(dateDir, TEST_FILENAME);
     fs.writeFileSync(testFile, '{"type":"session_meta","payload":{"cwd":"/tmp"}}\n');
@@ -377,9 +397,52 @@ describe("CodexLogMonitor", () => {
     monitor.start();
   });
 
-  // ── Approval heuristic tests ──
+  it("recovers immediately when a tracked rollout is truncated", (_, done) => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    fs.writeFileSync(testFile, [
+      JSON.stringify({ type: "session_meta", payload: { cwd: "/tmp", padding: "x".repeat(200) } }),
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
+    ].join("\n") + "\n");
+    const states = [];
+    monitor = new CodexLogMonitor(makeConfig(tmpDir), (_sid, state) => states.push(state));
+    monitor.start();
+    setTimeout(() => {
+      fs.writeFileSync(testFile, '{"type":"event_msg","payload":{"type":"turn_aborted"}}\n');
+      monitor._pollFile(testFile, TEST_FILENAME, false);
+      assert.equal(states.at(-1), "idle");
+      done();
+    }, 150);
+  });
 
-  it("should emit codex-permission after 2s timeout when no exec_command_end arrives", (_, done) => {
+  it("closes a rollout descriptor when reading throws", () => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    fs.writeFileSync(testFile, '{"type":"session_meta","payload":{"cwd":"/tmp"}}\n');
+    monitor = new CodexLogMonitor(makeConfig(tmpDir), () => {});
+    const originalRead = fs.readSync;
+    const originalClose = fs.closeSync;
+    let closeCalls = 0;
+    fs.readSync = () => { throw new Error("read failed"); };
+    fs.closeSync = (...args) => { closeCalls++; return originalClose(...args); };
+    try {
+      monitor._pollFile(testFile, TEST_FILENAME, false);
+    } finally {
+      fs.readSync = originalRead;
+      fs.closeSync = originalClose;
+    }
+    assert.equal(closeCalls, 1);
+  });
+
+  it("limits bytes read from a newly discovered large rollout per poll", () => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    fs.writeFileSync(testFile, `${"x".repeat(1024)}\n`);
+    const config = makeConfig(tmpDir);
+    config.logConfig.maxReadBytesPerPoll = 64;
+    monitor = new CodexLogMonitor(config, () => {});
+    monitor._pollFile(testFile, TEST_FILENAME, false);
+    assert.equal(monitor._tracked.get(testFile).offset, 64);
+  });
+
+  it("should keep a long-running shell command working instead of guessing that it needs approval", (_, done) => {
     const testFile = path.join(dateDir, TEST_FILENAME);
     // function_call with shell_command but no exec_command_end following
     fs.writeFileSync(testFile, [
@@ -389,40 +452,15 @@ describe("CodexLogMonitor", () => {
 
     const config = makeConfig(tmpDir);
     const states = [];
-    monitor = new CodexLogMonitor(config, (sid, state, event, extra) => {
-      states.push(state);
-      if (state === "codex-permission") {
-        assert.strictEqual(extra.permissionDetail.command, "rm -rf node_modules");
-        assert.strictEqual(extra.cwd, "/projects/foo");
-        done();
-      }
-    });
-    monitor.start();
-  });
-
-  it("should NOT emit codex-permission if exec_command_end arrives within 2s", (_, done) => {
-    const testFile = path.join(dateDir, TEST_FILENAME);
-    // function_call immediately followed by exec_command_end — auto-approved
-    fs.writeFileSync(testFile, [
-      '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
-      '{"type":"response_item","payload":{"type":"function_call","name":"shell_command","arguments":"{\\"command\\":\\"ls\\"}"}}',
-      '{"type":"event_msg","payload":{"type":"exec_command_end"}}',
-    ].join("\n") + "\n");
-
-    const config = makeConfig(tmpDir);
-    const states = [];
-    monitor = new CodexLogMonitor(config, (sid, state) => {
+    monitor = new CodexLogMonitor(config, (_sid, state) => {
       states.push(state);
     });
     monitor.start();
-
-    // Wait 3s — if codex-permission doesn't appear, the timer was correctly cancelled
     setTimeout(() => {
       assert.ok(!states.includes("codex-permission"), "should not have emitted codex-permission");
-      assert.ok(states.includes("idle"));
       assert.ok(states.includes("working"));
       done();
-    }, 3000);
+    }, 2500);
   });
 
   it("should NOT emit codex-permission for non-shell function calls", (_, done) => {
@@ -443,7 +481,28 @@ describe("CodexLogMonitor", () => {
     setTimeout(() => {
       assert.ok(!states.includes("codex-permission"), "should not emit for non-shell calls");
       done();
-    }, 3000);
+    }, 300);
+  });
+
+  it("keeps an explicitly in-flight turn tracked past the normal stale timeout", () => {
+    const config = makeConfig(tmpDir);
+    const states = [];
+    monitor = new CodexLogMonitor(config, (_sid, state, event) => states.push({ state, event }));
+    const tracked = {
+      sessionId: EXPECTED_SID,
+      cwd: "/tmp",
+      lastEventTime: Date.now() - 301000,
+      lastState: "working",
+      turnInFlight: true,
+      inFlightStartedAt: Date.now() - 301000,
+      lastHeartbeatAt: 0,
+      reported: true,
+      isSubagent: false,
+    };
+    monitor._tracked.set("/tmp/in-flight.jsonl", tracked);
+    monitor._cleanStaleFiles();
+    assert.equal(monitor._tracked.has("/tmp/in-flight.jsonl"), true);
+    assert.deepStrictEqual(states, [{ state: "working", event: "codex-heartbeat" }]);
   });
 
   it("should extract shell command from function_call arguments JSON", () => {

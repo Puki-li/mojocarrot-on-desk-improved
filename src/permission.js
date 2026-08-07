@@ -187,6 +187,7 @@ function resolvePermissionEntry(permEntry, behavior, message) {
   }
 
   pendingPermissions.splice(idx, 1);
+  if (permEntry.requestTimeout) clearTimeout(permEntry.requestTimeout);
   if (typeof ctx.onPermissionSettled === "function") ctx.onPermissionSettled(permEntry.sessionId);
 
   const { res, abortHandler, bubble: bub } = permEntry;
@@ -226,6 +227,7 @@ function handOffPermissionEntry(permEntry, { focusTerminal = false } = {}) {
   if (!permEntry || permEntry.isCodexNotify) return false;
   const idx = pendingPermissions.indexOf(permEntry);
   if (idx !== -1) pendingPermissions.splice(idx, 1);
+  if (permEntry.requestTimeout) clearTimeout(permEntry.requestTimeout);
 
   const bubble = permEntry.bubble;
   if (bubble && !bubble.isDestroyed()) {
@@ -354,6 +356,7 @@ function dismissCodexNotify(permEntry) {
   if (idx === -1) return;
   pendingPermissions.splice(idx, 1);
   if (permEntry.autoExpireTimer) clearTimeout(permEntry.autoExpireTimer);
+  if (permEntry.requestTimeout) clearTimeout(permEntry.requestTimeout);
   if (permEntry.hideTimer) clearTimeout(permEntry.hideTimer);
   if (permEntry.bubble && !permEntry.bubble.isDestroyed()) {
     permEntry.bubble.webContents.send("permission-hide");
@@ -375,6 +378,7 @@ function cleanup() {
   // Clean up all pending permission requests — send explicit deny so Claude Code doesn't hang
   for (const perm of [...pendingPermissions]) {
     if (perm._delayTimer) clearTimeout(perm._delayTimer);
+    if (perm.requestTimeout) clearTimeout(perm.requestTimeout);
     resolvePermissionEntry(perm, "deny", "Clawd is quitting");
   }
 }

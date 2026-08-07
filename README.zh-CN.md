@@ -156,6 +156,8 @@ Host my-server
 
 远程 hook 以 `CLAWD_REMOTE` 模式运行，跳过 PID 采集（远程 PID 在本地无意义）。远程会话不支持终端聚焦。
 
+状态与权限 POST 均需要鉴权。远程使用时，请在可信远程终端中，将本机 `~/.clawd/auth-token` 的值配置为 `CLAWD_AUTH_TOKEN`，再注册 hooks 或启动 Codex monitor。部署脚本不会打印或自动复制该令牌。
+
 > 感谢 [@Magic-Bytes](https://github.com/Magic-Bytes) 提出 SSH 隧道方案（[#9](https://github.com/rullerzhou-afk/clawd-on-desk/issues/9)）。
 
 ### macOS 说明

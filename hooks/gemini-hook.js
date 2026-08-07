@@ -104,14 +104,9 @@ function getStablePid() {
   return _stablePid;
 }
 
-// Gemini CLI gating hooks need stdout JSON response
-function stdoutForEvent(hookName) {
-  if (hookName === "BeforeTool") {
-    return JSON.stringify({ decision: "allow" });
-  }
-  if (hookName === "BeforeAgent") {
-    return JSON.stringify({});
-  }
+// Gemini CLI gating hooks need a JSON response. This hook observes state only;
+// it must never make an allow/deny decision on the user's behalf.
+function stdoutForEvent() {
   return "{}";
 }
 

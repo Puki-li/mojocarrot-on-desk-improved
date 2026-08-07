@@ -5,11 +5,14 @@ const http = require("http");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const crypto = require("crypto");
 const {
+  CLAWD_AUTH_HEADER,
   CLAWD_SERVER_HEADER,
   CLAWD_SERVER_ID,
   DEFAULT_SERVER_PORT,
   clearRuntimeConfig,
+  getOrCreateAuthToken,
   getPortCandidates,
   readRuntimePort,
   writeRuntimeConfig,
@@ -19,6 +22,64 @@ module.exports = function initServer(ctx) {
 
 let httpServer = null;
 let activeServerPort = null;
+let authToken = typeof ctx.authToken === "string" && ctx.authToken ? ctx.authToken : null;
+if (!authToken) {
+  try {
+    authToken = getOrCreateAuthToken();
+  } catch (err) {
+    console.warn("Clawd: authentication token unavailable; HTTP hooks are disabled:", err.message);
+  }
+}
+const MAX_PENDING_PERMISSIONS = 8;
+const MAX_PENDING_PER_SESSION = 2;
+const STATE_RATE_WINDOW_MS = 10000;
+const MAX_STATE_REQUESTS_PER_WINDOW = 240;
+const REQUEST_BODY_TIMEOUT_MS = 5000;
+const PERMISSION_REQUEST_TIMEOUT_MS = Number.isFinite(ctx.permissionRequestTimeoutMs)
+  ? ctx.permissionRequestTimeoutMs
+  : 590000;
+let stateRateWindowStartedAt = 0;
+let stateRequestCount = 0;
+
+function safeTokenEqual(value) {
+  if (typeof value !== "string") return false;
+  const expected = Buffer.from(authToken);
+  const actual = Buffer.from(value);
+  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+}
+
+function isAuthorized(req, requestUrl) {
+  const headerValue = req.headers && req.headers[CLAWD_AUTH_HEADER];
+  const headerToken = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+  return safeTokenEqual(headerToken) || safeTokenEqual(requestUrl.searchParams.get("token"));
+}
+
+function sendHttpError(res, statusCode, message) {
+  res.writeHead(statusCode, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
+  res.end(message || "");
+}
+
+function acceptsJson(req) {
+  const value = req.headers && req.headers["content-type"];
+  return typeof value === "string" && value.split(";", 1)[0].trim().toLowerCase() === "application/json";
+}
+
+function stateRateLimitExceeded() {
+  const now = Date.now();
+  if (now - stateRateWindowStartedAt >= STATE_RATE_WINDOW_MS) {
+    stateRateWindowStartedAt = now;
+    stateRequestCount = 0;
+  }
+  stateRequestCount++;
+  return stateRequestCount > MAX_STATE_REQUESTS_PER_WINDOW;
+}
+
+function armPermissionTimeout(entry) {
+  entry.requestTimeout = setTimeout(() => {
+    if (!ctx.pendingPermissions.includes(entry)) return;
+    ctx.resolvePermissionEntry(entry, "deny", "Permission request timed out");
+  }, PERMISSION_REQUEST_TIMEOUT_MS);
+}
 
 function getHookServerPort() {
   return activeServerPort || readRuntimePort() || DEFAULT_SERVER_PORT;
@@ -126,20 +187,55 @@ function watchSettingsForHookLoss() {
 }
 
 function startHttpServer() {
+  if (!authToken) return;
   httpServer = http.createServer((req, res) => {
-    if (req.method === "GET" && req.url === "/state") {
+    let requestUrl;
+    try {
+      requestUrl = new URL(req.url || "/", "http://127.0.0.1");
+    } catch {
+      sendHttpError(res, 400, "bad url");
+      return;
+    }
+    const isProtectedPost = req.method === "POST" &&
+      (requestUrl.pathname === "/state" || requestUrl.pathname === "/permission");
+    let requestTerminated = false;
+    if (isProtectedPost && !isAuthorized(req, requestUrl)) {
+      sendHttpError(res, 401, "unauthorized");
+      return;
+    }
+    if (isProtectedPost && !acceptsJson(req)) {
+      sendHttpError(res, 415, "application/json required");
+      return;
+    }
+    if (isProtectedPost && typeof req.setTimeout === "function") {
+      req.setTimeout(REQUEST_BODY_TIMEOUT_MS, () => {
+        if (requestTerminated) return;
+        requestTerminated = true;
+        if (!res.writableEnded && !res.writableFinished) sendHttpError(res, 408, "request timeout");
+        if (typeof req.destroy === "function") req.destroy();
+      });
+    }
+
+    if (req.method === "GET" && requestUrl.pathname === "/state") {
       sendStateHealthResponse(res);
-    } else if (req.method === "POST" && req.url === "/state") {
+    } else if (req.method === "POST" && requestUrl.pathname === "/state") {
+      if (stateRateLimitExceeded()) {
+        sendHttpError(res, 429, "too many state updates");
+        return;
+      }
       let body = "";
       let bodySize = 0;
       let tooLarge = false;
       req.on("data", (chunk) => {
-        if (tooLarge) return;
+        if (requestTerminated || tooLarge) return;
         bodySize += chunk.length;
         if (bodySize > 1024) { tooLarge = true; return; }
         body += chunk;
       });
       req.on("end", () => {
+        if (requestTerminated) return;
+        requestTerminated = true;
+        if (typeof req.setTimeout === "function") req.setTimeout(0);
         if (tooLarge) {
           res.writeHead(413);
           res.end("state payload too large");
@@ -192,18 +288,21 @@ function startHttpServer() {
           res.end("bad json");
         }
       });
-    } else if (req.method === "POST" && req.url === "/permission") {
+    } else if (req.method === "POST" && requestUrl.pathname === "/permission") {
       ctx.permLog(`/permission hit | DND=${ctx.doNotDisturb} pending=${ctx.pendingPermissions.length}`);
       let body = "";
       let bodySize = 0;
       let tooLarge = false;
       req.on("data", (chunk) => {
-        if (tooLarge) return;
+        if (requestTerminated || tooLarge) return;
         bodySize += chunk.length;
         if (bodySize > 524288) { tooLarge = true; return; }
         body += chunk;
       });
       req.on("end", () => {
+        if (requestTerminated) return;
+        requestTerminated = true;
+        if (typeof req.setTimeout === "function") req.setTimeout(0);
         if (tooLarge) {
           ctx.permLog("SKIPPED: permission payload too large");
           ctx.sendPermissionResponse(res, "deny", "Permission request too large for Clawd bubble; answer in terminal");
@@ -256,6 +355,14 @@ function startHttpServer() {
             return;
           }
 
+          const realPending = ctx.pendingPermissions.filter((entry) => !entry.isCodexNotify);
+          const pendingForSession = realPending.filter((entry) => entry.sessionId === sessionId).length;
+          if (realPending.length >= MAX_PENDING_PERMISSIONS || pendingForSession >= MAX_PENDING_PER_SESSION) {
+            ctx.permLog(`RATE_LIMITED: session=${sessionId} pending=${realPending.length}`);
+            sendHttpError(res, 429, "too many pending permission requests");
+            return;
+          }
+
           // Elicitation (AskUserQuestion) — show notification bubble, not permission bubble.
           // User clicks "Go to Terminal" → deny → Claude Code falls back to terminal.
           if (toolName === "AskUserQuestion") {
@@ -271,6 +378,7 @@ function startHttpServer() {
             permEntry.abortHandler = abortHandler;
             res.on("close", abortHandler);
             ctx.pendingPermissions.push(permEntry);
+            armPermissionTimeout(permEntry);
             if (!ctx.hideBubbles) ctx.showPermissionBubble(permEntry);
             return;
           }
@@ -285,6 +393,7 @@ function startHttpServer() {
           res.on("close", abortHandler);
 
           ctx.pendingPermissions.push(permEntry);
+          armPermissionTimeout(permEntry);
 
           // Show notification on the pet while the bubble waits for an answer;
           // sticky (oneshot) — the next session event replaces it

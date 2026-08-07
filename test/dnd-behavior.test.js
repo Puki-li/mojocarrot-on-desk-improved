@@ -135,6 +135,7 @@ describe("Do Not Disturb behavior", () => {
       delete require.cache[require.resolve("../src/server")];
       const initServer = require("../src/server");
       api = initServer({
+        authToken: "test-token",
         doNotDisturb: true,
         pendingPermissions: [],
         permLog() {},
@@ -147,7 +148,8 @@ describe("Do Not Disturb behavior", () => {
 
     const req = new EventEmitter();
     req.method = "POST";
-    req.url = "/permission";
+    req.url = "/permission?token=test-token";
+    req.headers = { "content-type": "application/json" };
     const writes = [];
     const res = {
       writableFinished: false,

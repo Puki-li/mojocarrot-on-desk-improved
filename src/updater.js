@@ -5,6 +5,9 @@ const https = require("https");
 const { app, dialog, shell, Notification } = require("electron");
 
 const isMac = process.platform === "darwin";
+const UPDATE_REPOSITORY = Object.freeze({ owner: "Puki-li", repo: "mojocarrot-on-desk-improved" });
+const RELEASES_URL = `https://github.com/${UPDATE_REPOSITORY.owner}/${UPDATE_REPOSITORY.repo}/releases/latest`;
+const LATEST_RELEASE_PATH = `/repos/${UPDATE_REPOSITORY.owner}/${UPDATE_REPOSITORY.repo}/releases/latest`;
 
 module.exports = function initUpdater(ctx) {
 
@@ -64,7 +67,7 @@ function setupAutoUpdater() {
       }).then(({ response }) => {
         if (response === 0) {
           ctx.updateLog("User chose to download, opening GitHub Releases");
-          shell.openExternal("https://github.com/rullerzhou-afk/clawd-on-desk/releases/latest");
+          shell.openExternal(RELEASES_URL);
         } else {
           ctx.updateLog("User chose to download later");
         }
@@ -201,7 +204,7 @@ function fetchLatestVersion() {
   return new Promise((resolve, reject) => {
     const options = {
       hostname: 'api.github.com',
-      path: '/repos/rullerzhou-afk/clawd-on-desk/releases/latest',
+      path: LATEST_RELEASE_PATH,
       headers: {
         'User-Agent': 'Clawd-on-Desk'
       }
@@ -399,3 +402,7 @@ function getUpdateMenuLabel() {
 return { setupAutoUpdater, checkForUpdates, getUpdateMenuItem, getUpdateMenuLabel };
 
 };
+
+module.exports.UPDATE_REPOSITORY = UPDATE_REPOSITORY;
+module.exports.RELEASES_URL = RELEASES_URL;
+module.exports.LATEST_RELEASE_PATH = LATEST_RELEASE_PATH;
