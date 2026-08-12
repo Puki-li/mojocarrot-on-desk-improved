@@ -213,13 +213,13 @@ function focusActivitySession(sessionId) {
   return true;
 }
 
-function handleCodexQuotaUpdate(nextQuota) {
+function handleCodexQuotaUpdate(nextQuota, metadata = {}) {
   if (!nextQuota) return;
   const previous = _codexQuota;
   _codexQuota = nextQuota;
   refreshActivity(null);
 
-  if (!previous || previous.cycleId !== nextQuota.cycleId) {
+  if (metadata.recovering === true || !previous || previous.cycleId !== nextQuota.cycleId) {
     _quotaAlertKeys.clear();
     return;
   }
@@ -1072,7 +1072,10 @@ if (!gotTheLock) {
         }
         // Non-permission event — clear any lingering Codex notify bubbles
         clearCodexNotifyBubbles(sid);
-        updateSession(sid, state, event, null, extra.cwd, null, null, null, "codex");
+        updateSession(
+          sid, state, event, null, extra.cwd, null, null, null, "codex",
+          null, null, null, extra.occurredAtMs
+        );
       }, (record, metadata) => {
         if (_codexQuotaSource) _codexQuotaSource.ingestObject(record, metadata);
       });

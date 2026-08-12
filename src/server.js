@@ -257,6 +257,7 @@ function startHttpServer() {
           const agentId = typeof data.agent_id === "string" ? data.agent_id : "claude-code";
           const host = typeof data.host === "string" ? data.host : null;
           const headless = data.headless === true;
+          const occurredAtMs = Number.isFinite(data.occurred_at_ms) ? data.occurred_at_ms : undefined;
           if (ctx.STATE_SVGS[state]) {
             const sid = session_id || "default";
             if (state.startsWith("mini-") && !svg) {
@@ -275,7 +276,10 @@ function startHttpServer() {
               const safeSvg = path.basename(svg);
               ctx.setState(state, safeSvg);
             } else {
-              ctx.updateSession(sid, state, event, source_pid, cwd, editor, pidChain, agentPid, agentId, host, headless, display_svg);
+              ctx.updateSession(
+                sid, state, event, source_pid, cwd, editor, pidChain, agentPid,
+                agentId, host, headless, display_svg, occurredAtMs
+              );
             }
             res.writeHead(200, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
             res.end("ok");

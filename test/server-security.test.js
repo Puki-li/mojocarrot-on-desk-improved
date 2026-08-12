@@ -108,6 +108,7 @@ test("authenticated state requests are accepted", () => {
     session_id: "s1",
     event: "PreToolUse",
     agent_id: "claude-code",
+    occurred_at_ms: 123456789,
   }, {
     "content-type": "application/json",
     "x-clawd-token": "test-token",
@@ -115,6 +116,7 @@ test("authenticated state requests are accepted", () => {
   request.send(requestHandler);
   assert.strictEqual(request.writes[0][1], 200);
   assert.strictEqual(updates.length, 1);
+  assert.strictEqual(updates[0][12], 123456789);
   api.cleanup();
 });
 

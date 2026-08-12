@@ -64,3 +64,11 @@ test("activity windows keep scripts and styles external under a strict CSP", () 
     assert.doesNotMatch(html, /<script(?!\s+src=)/i);
   }
 });
+
+test("status renderer waits for the first real snapshot", () => {
+  const renderer = fs.readFileSync(
+    path.join(__dirname, "..", "src", "activity-status-renderer.js"),
+    "utf8"
+  );
+  assert.doesNotMatch(renderer, /render\(null\)/);
+});

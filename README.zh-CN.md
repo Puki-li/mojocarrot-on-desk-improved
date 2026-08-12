@@ -7,7 +7,7 @@
 </p>
 <p align="center">
   <a href="https://github.com/Puki-li/mojocarrot-on-desk-improved/actions/workflows/test.yml"><img src="https://github.com/Puki-li/mojocarrot-on-desk-improved/actions/workflows/test.yml/badge.svg" alt="Test"></a>
-  <img src="https://img.shields.io/badge/version-1.0.0-2ea44f" alt="Version 1.0.0">
+  <img src="https://img.shields.io/badge/version-1.0.1-2ea44f" alt="Version 1.0.1">
 </p>
 
 一个能实时感知 AI 编程助手工作状态的桌面宠物。项目基于公开仓库 [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk) 改造而来，保留原项目的多 Agent 运行机制，同时把屏幕上的主角色替换为 **给 WMLS 们的 Mojocarrot**，并在 v1.0.0 中加入统一活跃状态、Codex 额度与更准确的会话识别。
@@ -15,6 +15,12 @@
 > 支持 Windows 11、macOS 和 Ubuntu/Linux。需要 Node.js。支持 **Claude Code**、**Codex CLI**、**Copilot CLI**、**Gemini CLI** 与 **Cursor Agent**。
 
 ## 功能特性
+
+### v1.0.1 重点更新
+- **Codex 启动状态稳定** — 合并日志首批事件，桌宠和状态栏不再快速经历 Idle、思考中与工作中等过渡状态
+- **完成状态更可靠** — 使用日志原始时间，延迟到达的历史事件无法覆盖较新的本轮完成状态
+- **大日志快速恢复** — 通过事件循环分片快速追平大型 rollout，同时避免回放历史活动和额度提醒
+- **状态栏首帧防闪** — 收到首份真实快照并完成尺寸计算后再显示状态栏
 
 ### v1.0.0 重点更新
 - **统一活跃中心** — 常驻状态条集中展示 Codex、Claude Code、Cursor、Copilot 与 Gemini，点击即可打开活跃会话面板

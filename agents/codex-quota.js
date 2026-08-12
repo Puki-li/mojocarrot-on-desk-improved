@@ -414,7 +414,7 @@ class CodexQuotaSource {
     if (!this._snapshot || withSource.observedAtMs >= this._snapshot.observedAtMs) {
       if (!snapshotsEqual(withSource, this._snapshot)) {
         this._snapshot = withSource;
-        this._onUpdate(withSource);
+        this._onUpdate(withSource, metadata);
       }
     }
     return withSource;

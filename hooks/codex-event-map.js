@@ -2,7 +2,9 @@
 // Keep this module dependency-free: remote-deploy.sh copies it as a standalone helper.
 
 const LOG_EVENT_MAP = Object.freeze({
-  "session_meta": "idle",
+  // Metadata describes the rollout but is not an activity transition. Emitting
+  // idle here made every new Codex turn visibly bounce Idle -> Thinking.
+  "session_meta": null,
   "event_msg:task_started": "thinking",
   "event_msg:user_message": "thinking",
   "event_msg:agent_message": null,

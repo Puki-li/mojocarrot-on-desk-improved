@@ -31,5 +31,4 @@
     window.activityAPI.showContextMenu();
   });
   window.activityAPI.onSnapshot(render);
-  render(null);
 })();

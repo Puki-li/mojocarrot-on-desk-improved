@@ -78,6 +78,24 @@ describe("session activity metadata", () => {
     assert.strictEqual(api.sessions.get("codex:text").activityState, "completed");
   });
 
+  it("does not let an older Codex event overwrite a newer completion", () => {
+    api = require("../src/state")(makeCtx());
+    const completedAt = Date.now();
+    api.updateSession(
+      "codex:ordered", "attention", "event_msg:task_complete", null, "/repo",
+      null, null, null, "codex", null, null, null, completedAt
+    );
+    api.updateSession(
+      "codex:ordered", "working", "response_item:function_call", null, "/repo",
+      null, null, null, "codex", null, null, null, completedAt - 1000
+    );
+
+    const session = api.sessions.get("codex:ordered");
+    assert.strictEqual(session.state, "idle");
+    assert.strictEqual(session.activityState, "completed");
+    assert.strictEqual(session.sourceEventAt, completedAt);
+  });
+
   it("removes a session immediately on SessionEnd", () => {
     const changes = [];
     api = require("../src/state")(makeCtx(changes));

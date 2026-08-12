@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const Module = require("node:module");
 
-test("activity controller keeps the status pill visible and opens the panel on demand", async () => {
+test("activity controller reveals the status pill after its first snapshot and opens the panel on demand", async () => {
   const ipcMain = new EventEmitter();
   ipcMain.removeListener = EventEmitter.prototype.removeListener;
   const windows = [];
@@ -72,11 +72,12 @@ test("activity controller keeps the status pill visible and opens the panel on d
 
   controller.create();
   assert.equal(windows.length, 3);
-  assert.equal(windows[0].isVisible(), true, "status pill is always visible");
+  assert.equal(windows[0].isVisible(), false, "status pill waits for its first rendered snapshot");
   assert.equal(windows[1].isVisible(), false, "panel starts hidden");
   controller.updateSnapshot({ status: { label: "Idle" }, sessions: [], sessionCount: 0 });
   assert.deepStrictEqual(windows[0].webContents.messages.at(-1)[0], "activity:snapshot");
   ipcMain.emit("activity:status-size", { sender: windows[0].webContents }, { width: 100, height: 44 });
+  assert.equal(windows[0].isVisible(), true, "status pill appears after its first size report");
   assert.equal(windows[0].bounds.width, 128, "status pill keeps a readable minimum width");
   ipcMain.emit("activity:status-size", { sender: windows[0].webContents }, { width: 90, height: 44, compact: true });
   assert.equal(windows[0].bounds.width, 96, "Idle can use its compact minimum width");

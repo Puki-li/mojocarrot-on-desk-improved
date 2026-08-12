@@ -23,6 +23,7 @@ class CodexLogMonitor {
     this._onStateChange = onStateChange;
     this._onRecord = typeof onRecord === "function" ? onRecord : null;
     this._interval = null;
+    this._recoveryDrainImmediate = null;
     // Map<filePath, { offset, sessionId, cwd, lastEventTime, lastState, partial }>
     this._tracked = new Map();
     this._baseDir = this._resolveBaseDir();
@@ -53,6 +54,10 @@ class CodexLogMonitor {
     if (this._interval) {
       clearInterval(this._interval);
       this._interval = null;
+    }
+    if (this._recoveryDrainImmediate) {
+      clearImmediate(this._recoveryDrainImmediate);
+      this._recoveryDrainImmediate = null;
     }
     this._tracked.clear();
   }
@@ -85,6 +90,26 @@ class CodexLogMonitor {
       }
     }
     this._cleanStaleFiles();
+    this._scheduleRecoveryDrain();
+  }
+
+  _scheduleRecoveryDrain() {
+    if (this._recoveryDrainImmediate) return;
+    const hasRecovering = [...this._tracked.values()].some(
+      (entry) => entry.recovering && entry.offset < entry.recoveryTargetOffset
+    );
+    if (!hasRecovering) return;
+    // Large rollouts can be tens of megabytes. Drain them in small event-loop
+    // slices instead of waiting 1.5s between every 256KB chunk. This keeps the
+    // Electron main thread responsive without replaying minutes of old states.
+    this._recoveryDrainImmediate = setImmediate(() => {
+      this._recoveryDrainImmediate = null;
+      for (const [filePath, tracked] of this._tracked) {
+        if (!tracked.recovering) continue;
+        this._pollFile(filePath, path.basename(filePath), false);
+      }
+      this._scheduleRecoveryDrain();
+    });
   }
 
   // Scan recent directories (supports codex resume of older sessions)
@@ -111,7 +136,6 @@ class CodexLogMonitor {
     }
 
     let tracked = this._tracked.get(filePath);
-    const isRecoveryRead = !tracked && recoverExisting;
     if (!tracked) {
       // New file — extract session ID from filename
       // Format: rollout-YYYY-MM-DDTHH-MM-SS-<uuid>.jsonl
@@ -134,8 +158,13 @@ class CodexLogMonitor {
         device: stat.dev,
         inode: stat.ino,
         mtimeMs: stat.mtimeMs,
-        recovering: isRecoveryRead,
-        recoveryTargetOffset: isRecoveryRead ? stat.size : 0,
+        // Every pre-existing byte is a bootstrap snapshot, even when the file
+        // was discovered after app startup. Parse it silently and publish only
+        // the final effective state once the monitor reaches the live tail.
+        recovering: stat.size > 0,
+        recoveryKind: recoverExisting ? "startup" : "bootstrap",
+        recoveryTargetOffset: stat.size,
+        lastEventOccurredAtMs: null,
       };
       this._tracked.set(filePath, tracked);
     }
@@ -147,7 +176,22 @@ class CodexLogMonitor {
       tracked.partial = "";
       tracked.device = stat.dev;
       tracked.inode = stat.ino;
-      if (tracked.recovering) tracked.recoveryTargetOffset = stat.size;
+      tracked.lastState = null;
+      tracked.lastEventKey = null;
+      tracked.lastEventOccurredAtMs = null;
+      tracked.hadToolUse = false;
+      tracked.turnInFlight = false;
+      tracked.inFlightStartedAt = 0;
+      tracked.recovering = stat.size > 0;
+      tracked.recoveryKind = "bootstrap";
+      tracked.recoveryTargetOffset = stat.size;
+    }
+
+    // Bytes appended while catch-up is running are still part of the snapshot.
+    // Extending the boundary prevents them from being replayed as fresh UI
+    // transitions after an earlier completion notification.
+    if (tracked.recovering && stat.size > tracked.recoveryTargetOffset) {
+      tracked.recoveryTargetOffset = stat.size;
     }
 
     // No new data. Refresh the state machine while a turn is explicitly open
@@ -202,10 +246,17 @@ class CodexLogMonitor {
 
   _finishRecovery(tracked) {
     if (!tracked.recovering || tracked.offset < tracked.recoveryTargetOffset) return;
+    if (tracked.partial) return;
+    const recoveryKind = tracked.recoveryKind;
     tracked.recovering = false;
+    tracked.recoveryKind = null;
     // On startup, recover only the final active state. Completed/idle history
     // is intentionally silent; appended events after the snapshot are real-time.
-    if (!tracked.isSubagent && (tracked.lastState === "working" || tracked.lastState === "thinking")) {
+    const isActive = tracked.lastState === "working" || tracked.lastState === "thinking";
+    const isFreshTerminalTurn = recoveryKind === "bootstrap" &&
+      (tracked.lastEventKey === "event_msg:task_complete" ||
+        tracked.lastEventKey === "event_msg:turn_aborted");
+    if (!tracked.isSubagent && (isActive || isFreshTerminalTurn)) {
       tracked.reported = true;
       tracked.lastHeartbeatAt = Date.now();
       this._onStateChange(tracked.sessionId, tracked.lastState, tracked.lastEventKey || "recovered", {
@@ -213,6 +264,7 @@ class CodexLogMonitor {
         sourcePid: null,
         agentPid: null,
         recovered: true,
+        occurredAtMs: tracked.lastEventOccurredAtMs,
       });
     }
   }
@@ -230,6 +282,7 @@ class CodexLogMonitor {
           sessionId: tracked.sessionId,
           cwd: tracked.cwd,
           observedAtMs: Date.now(),
+          recovering: tracked.recovering,
         });
       } catch {}
     }
@@ -255,6 +308,8 @@ class CodexLogMonitor {
     if (tracked.isSubagent) return;
 
     const now = Date.now();
+    const parsedOccurredAtMs = Date.parse(obj.timestamp);
+    const occurredAtMs = Number.isFinite(parsedOccurredAtMs) ? parsedOccurredAtMs : now;
     tracked.lastEventTime = now;
     if (key === "event_msg:task_started" || key === "event_msg:user_message") {
       tracked.turnInFlight = true;
@@ -268,6 +323,7 @@ class CodexLogMonitor {
     if (mappedState === undefined || mappedState === null) return;
     const state = resolveCodexEventState(key, tracked);
     tracked.lastEventKey = key;
+    tracked.lastEventOccurredAtMs = occurredAtMs;
 
     // Turn-end: happy if tools were used this turn, idle otherwise.
     if (mappedState === "codex-turn-end") {
@@ -278,6 +334,7 @@ class CodexLogMonitor {
           cwd: tracked.cwd,
           sourcePid: null,
           agentPid: null,
+          occurredAtMs,
         });
       }
       return;
@@ -292,6 +349,7 @@ class CodexLogMonitor {
         cwd: tracked.cwd,
         sourcePid: null, // JSONL doesn't contain terminal PID
         agentPid: null, // can't reliably match from log file
+        occurredAtMs,
       });
     }
   }
@@ -309,6 +367,7 @@ class CodexLogMonitor {
       sourcePid: null,
       agentPid: null,
       heartbeat: true,
+      occurredAtMs: now,
     });
   }
 

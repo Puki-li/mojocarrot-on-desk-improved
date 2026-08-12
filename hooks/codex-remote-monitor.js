@@ -41,6 +41,7 @@ const hostPrefix = readHostPrefix();
 
 // Map<filePath, { offset, sessionId, cwd, lastEventTime, lastState, partial }>
 const tracked = new Map();
+let recoveryDrainImmediate = null;
 
 // ── Core polling logic (mirrors agents/codex-log-monitor.js) ──
 
@@ -66,7 +67,7 @@ function extractSessionId(fileName) {
   return parts.slice(-5).join("-");
 }
 
-function postState(sessionId, state, event, cwd) {
+function postState(sessionId, state, event, cwd, occurredAtMs) {
   const body = JSON.stringify({
     state,
     session_id: sessionId,
@@ -74,6 +75,7 @@ function postState(sessionId, state, event, cwd) {
     agent_id: "codex",
     cwd: cwd || "",
     host: hostPrefix,
+    occurred_at_ms: Number.isFinite(occurredAtMs) ? occurredAtMs : Date.now(),
   });
   postStateToRunningServer(
     body,
@@ -105,6 +107,8 @@ function processLine(line, entry, emit = true) {
   if (entry.isSubagent) return;
 
   const now = Date.now();
+  const parsedOccurredAtMs = Date.parse(obj.timestamp);
+  const occurredAtMs = Number.isFinite(parsedOccurredAtMs) ? parsedOccurredAtMs : now;
   entry.lastEventTime = now;
   if (key === "event_msg:task_started" || key === "event_msg:user_message") {
     entry.turnInFlight = true;
@@ -121,11 +125,13 @@ function processLine(line, entry, emit = true) {
   // Avoid spamming same state
   if (state === entry.lastState && state === "working") return;
   entry.lastState = state;
+  entry.lastEventKey = key;
+  entry.lastEventOccurredAtMs = occurredAtMs;
 
   if (emit) {
     entry.reported = true;
     entry.lastHeartbeatAt = now;
-    postState(entry.sessionId, state, key, entry.cwd);
+    postState(entry.sessionId, state, key, entry.cwd, occurredAtMs);
   }
 }
 
@@ -137,16 +143,29 @@ function refreshInFlight(entry) {
   const state = entry.lastState === "working" ? "working" : "thinking";
   entry.lastHeartbeatAt = now;
   entry.lastEventTime = now;
-  postState(entry.sessionId, state, "codex-heartbeat", entry.cwd);
+  postState(entry.sessionId, state, "codex-heartbeat", entry.cwd, now);
 }
 
 function finishRecovery(entry) {
   if (!entry.recovering || entry.offset < entry.recoveryTargetOffset) return;
+  if (entry.partial) return;
+  const recoveryKind = entry.recoveryKind;
   entry.recovering = false;
-  if (!entry.isSubagent && (entry.lastState === "working" || entry.lastState === "thinking")) {
+  entry.recoveryKind = null;
+  const isActive = entry.lastState === "working" || entry.lastState === "thinking";
+  const isFreshTerminalTurn = recoveryKind === "bootstrap" &&
+    (entry.lastEventKey === "event_msg:task_complete" ||
+      entry.lastEventKey === "event_msg:turn_aborted");
+  if (!entry.isSubagent && (isActive || isFreshTerminalTurn)) {
     entry.reported = true;
     entry.lastHeartbeatAt = Date.now();
-    postState(entry.sessionId, entry.lastState, "recovered", entry.cwd);
+    postState(
+      entry.sessionId,
+      entry.lastState,
+      entry.lastEventKey || "recovered",
+      entry.cwd,
+      entry.lastEventOccurredAtMs
+    );
   }
 }
 
@@ -178,8 +197,11 @@ function pollFile(filePath, fileName, recoverExisting = false) {
       lastHeartbeatAt: 0,
       reported: false,
       isSubagent: false,
-      recovering: recoverExisting,
-      recoveryTargetOffset: recoverExisting ? stat.size : 0,
+      recovering: stat.size > 0,
+      recoveryKind: recoverExisting ? "startup" : "bootstrap",
+      recoveryTargetOffset: stat.size,
+      lastEventKey: null,
+      lastEventOccurredAtMs: null,
     };
     tracked.set(filePath, entry);
   }
@@ -191,7 +213,18 @@ function pollFile(filePath, fileName, recoverExisting = false) {
     entry.partial = "";
     entry.device = stat.dev;
     entry.inode = stat.ino;
-    if (entry.recovering) entry.recoveryTargetOffset = stat.size;
+    entry.lastState = null;
+    entry.lastEventKey = null;
+    entry.lastEventOccurredAtMs = null;
+    entry.hadToolUse = false;
+    entry.turnInFlight = false;
+    entry.inFlightStartedAt = 0;
+    entry.recovering = stat.size > 0;
+    entry.recoveryKind = "bootstrap";
+    entry.recoveryTargetOffset = stat.size;
+  }
+  if (entry.recovering && stat.size > entry.recoveryTargetOffset) {
+    entry.recoveryTargetOffset = stat.size;
   }
   const readableEnd = entry.recovering
     ? Math.min(stat.size, entry.recoveryTargetOffset)
@@ -270,6 +303,22 @@ function poll(recoverExisting = false) {
     }
   }
   cleanStaleFiles();
+  scheduleRecoveryDrain();
+}
+
+function scheduleRecoveryDrain() {
+  if (recoveryDrainImmediate) return;
+  if (![...tracked.values()].some(
+    (entry) => entry.recovering && entry.offset < entry.recoveryTargetOffset
+  )) return;
+  recoveryDrainImmediate = setImmediate(() => {
+    recoveryDrainImmediate = null;
+    for (const [filePath, entry] of tracked) {
+      if (!entry.recovering) continue;
+      pollFile(filePath, path.basename(filePath), false);
+    }
+    scheduleRecoveryDrain();
+  });
 }
 
 // ── Main ──
@@ -287,11 +336,13 @@ if (!onceMode) {
 
   process.on("SIGINT", () => {
     clearInterval(interval);
+    if (recoveryDrainImmediate) clearImmediate(recoveryDrainImmediate);
     console.log("\nStopped.");
     process.exit(0);
   });
   process.on("SIGTERM", () => {
     clearInterval(interval);
+    if (recoveryDrainImmediate) clearImmediate(recoveryDrainImmediate);
     process.exit(0);
   });
 }

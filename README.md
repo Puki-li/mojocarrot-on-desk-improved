@@ -7,7 +7,7 @@
 </p>
 <p align="center">
   <a href="https://github.com/Puki-li/mojocarrot-on-desk-improved/actions/workflows/test.yml"><img src="https://github.com/Puki-li/mojocarrot-on-desk-improved/actions/workflows/test.yml/badge.svg" alt="Test"></a>
-  <img src="https://img.shields.io/badge/version-1.0.0-2ea44f" alt="Version 1.0.0">
+  <img src="https://img.shields.io/badge/version-1.0.1-2ea44f" alt="Version 1.0.1">
 </p>
 
 A desktop pet that reacts to your AI coding agent sessions in real-time. This repository maintains a Mojocarrot-themed derivative of the public project [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk), adapted into **Mojocarrot on Desk** for WMLS with reworked scene choreography, multi-agent activity tracking, and Codex-focused tooling.
@@ -15,6 +15,12 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. This re
 > Supports Windows 11, macOS, and Ubuntu/Linux. Requires Node.js. Works with **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, and **Cursor Agent**.
 
 ## Features
+
+### What's New in v1.0.1
+- **Stable Codex startup** — bootstrap log events are coalesced so the pet and status pill no longer bounce through transient Idle, Thinking, and Working states
+- **Reliable completion state** — source timestamps prevent delayed historical events from overwriting a newer completed turn
+- **Fast large-log recovery** — large rollout files are drained in responsive event-loop slices without replaying historical activity or quota alerts
+- **Flicker-free status pill** — the pill is revealed only after its first real snapshot and final size are ready
 
 ### What's New in v1.0.0
 - **Unified activity center** — an always-visible status pill opens a panel for Codex, Claude Code, Cursor, Copilot, and Gemini sessions

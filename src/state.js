@@ -345,7 +345,7 @@ function pickDisplaySvg(state, existing, incoming) {
 }
 
 // ── Session management ──
-function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain, agentPid, agentId, host, headless, displaySvg) {
+function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain, agentPid, agentId, host, headless, displaySvg, occurredAtMs) {
   if (startupRecoveryActive) {
     startupRecoveryActive = false;
     if (startupRecoveryTimer) { clearTimeout(startupRecoveryTimer); startupRecoveryTimer = null; }
@@ -356,6 +356,13 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
   if (event === "PermissionRequest") state = "notification";
 
   const existing = sessions.get(sessionId);
+  const sourceEventAt = Number.isFinite(occurredAtMs) ? occurredAtMs : null;
+  // A slow log catch-up must never let an older record resurrect a session
+  // after a newer completion or abort has already been applied.
+  if (existing && sourceEventAt !== null && Number.isFinite(existing.sourceEventAt) &&
+      sourceEventAt < existing.sourceEventAt) {
+    return;
+  }
   const preserveCompleted = event === "stale-cleanup" && existing?.activityState === "completed";
   const srcPid = sourcePid || (existing && existing.sourcePid) || null;
   const srcCwd = cwd || (existing && existing.cwd) || "";
@@ -369,7 +376,10 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
   const pidReachable = existing ? existing.pidReachable :
     (srcAgentPid ? isProcessAlive(srcAgentPid) : (srcPid ? isProcessAlive(srcPid) : false));
 
-  const base = { sourcePid: srcPid, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain, agentPid: srcAgentPid, agentId: srcAgentId, host: srcHost, headless: srcHeadless, pidReachable };
+  const resolvedSourceEventAt = sourceEventAt !== null
+    ? sourceEventAt
+    : (existing && existing.sourceEventAt) || null;
+  const base = { sourcePid: srcPid, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain, agentPid: srcAgentPid, agentId: srcAgentId, host: srcHost, headless: srcHeadless, pidReachable, sourceEventAt: resolvedSourceEventAt };
 
   if (event === "SessionEnd") {
     const endingSession = sessions.get(sessionId);

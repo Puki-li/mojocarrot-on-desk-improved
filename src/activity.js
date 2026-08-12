@@ -29,6 +29,8 @@ module.exports = function initActivity(ctx) {
   let alertTimer = null;
   let blurTimer = null;
   let statusSize = { ...STATUS_SIZE };
+  let statusReady = false;
+  let statusShouldShow = true;
   let panelSize = { ...PANEL_DEFAULT_SIZE };
   let alertSequence = 0;
 
@@ -88,7 +90,6 @@ module.exports = function initActivity(ctx) {
     configureWindow(statusWin, { focusable: true });
     statusWin.loadFile(path.join(__dirname, "activity-status.html"));
     statusWin.webContents.on("did-finish-load", () => sendSnapshot(statusWin));
-    statusWin.showInactive();
 
     panelWin = new BrowserWindow(windowOptions({ ...panelSize, focusable: true }));
     configureWindow(panelWin, { focusable: true });
@@ -160,6 +161,8 @@ module.exports = function initActivity(ctx) {
       };
       if (!statusWin.isDestroyed()) statusWin.setSize(statusSize.width, statusSize.height, false);
       reposition();
+      statusReady = true;
+      if (statusShouldShow && !statusWin.isVisible()) statusWin.showInactive();
     });
     register("activity:show-context-menu", (event) => {
       if (!senderIs(event, statusWin)) return;
@@ -337,15 +340,17 @@ module.exports = function initActivity(ctx) {
   }
 
   function hide() {
+    statusShouldShow = false;
     closePanel();
     hideAlert();
     if (statusWin && !statusWin.isDestroyed()) statusWin.hide();
   }
 
   function show() {
+    statusShouldShow = true;
     if (statusWin && !statusWin.isDestroyed()) {
       reposition();
-      statusWin.showInactive();
+      if (statusReady) statusWin.showInactive();
     }
   }
 

@@ -50,30 +50,26 @@ describe("CodexLogMonitor", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("should extract session ID from filename", (_, done) => {
-    const testFile = path.join(dateDir, TEST_FILENAME);
-    fs.writeFileSync(testFile, '{"type":"session_meta","payload":{"cwd":"/tmp"}}\n');
-
+  it("should extract session ID from filename", () => {
     const config = makeConfig(tmpDir);
-    monitor = new CodexLogMonitor(config, (sid, state) => {
-      assert.strictEqual(sid, EXPECTED_SID);
-      assert.strictEqual(state, "idle");
-      done();
-    });
-    monitor.start();
+    monitor = new CodexLogMonitor(config, () => {});
+    assert.strictEqual(monitor._extractSessionId(TEST_FILENAME), EXPECTED_SID.replace(/^codex:/, ""));
   });
 
-  it("should map session_meta to idle", (_, done) => {
+  it("uses session_meta for metadata without emitting an idle transition", (_, done) => {
     const testFile = path.join(dateDir, TEST_FILENAME);
     fs.writeFileSync(testFile, '{"type":"session_meta","payload":{"cwd":"/projects/foo"}}\n');
 
     const config = makeConfig(tmpDir);
     monitor = new CodexLogMonitor(config, (sid, state, event, extra) => {
-      assert.strictEqual(state, "idle");
+      assert.strictEqual(state, "thinking");
       assert.strictEqual(extra.cwd, "/projects/foo");
       done();
     });
     monitor.start();
+    setTimeout(() => {
+      fs.appendFileSync(testFile, '{"type":"event_msg","payload":{"type":"task_started"}}\n');
+    }, 150);
   });
 
   it("should map task_started to thinking", (_, done) => {
@@ -84,14 +80,9 @@ describe("CodexLogMonitor", () => {
     ].join("\n") + "\n");
 
     const config = makeConfig(tmpDir);
-    const states = [];
     monitor = new CodexLogMonitor(config, (sid, state) => {
-      states.push(state);
-      if (states.length === 2) {
-        assert.strictEqual(states[0], "idle");
-        assert.strictEqual(states[1], "thinking");
-        done();
-      }
+      assert.strictEqual(state, "thinking");
+      done();
     });
     monitor.start();
   });
@@ -104,13 +95,9 @@ describe("CodexLogMonitor", () => {
     ].join("\n") + "\n");
 
     const config = makeConfig(tmpDir);
-    const states = [];
     monitor = new CodexLogMonitor(config, (sid, state) => {
-      states.push(state);
-      if (states.length === 2) {
-        assert.strictEqual(states[1], "working");
-        done();
-      }
+      assert.strictEqual(state, "working");
+      done();
     });
     monitor.start();
   });
@@ -124,13 +111,10 @@ describe("CodexLogMonitor", () => {
     ].join("\n") + "\n");
 
     const config = makeConfig(tmpDir);
-    const states = [];
-    monitor = new CodexLogMonitor(config, (sid, state) => {
-      states.push(state);
-      if (states.length === 3) {
-        assert.deepStrictEqual(states, ["idle", "thinking", "idle"]);
-        done();
-      }
+    monitor = new CodexLogMonitor(config, (sid, state, event) => {
+      assert.strictEqual(state, "idle");
+      assert.strictEqual(event, "event_msg:task_complete");
+      done();
     });
     monitor.start();
   });
@@ -150,7 +134,7 @@ describe("CodexLogMonitor", () => {
     monitor = new CodexLogMonitor(config, (sid, state) => {
       states.push(state);
       if (state === "attention") {
-        assert.deepStrictEqual(states, ["idle", "thinking", "working", "attention"]);
+        assert.deepStrictEqual(states, ["attention"]);
         done();
       }
     });
@@ -171,7 +155,7 @@ describe("CodexLogMonitor", () => {
     monitor = new CodexLogMonitor(config, (sid, state) => {
       states.push(state);
       if (state === "attention") {
-        assert.deepStrictEqual(states, ["idle", "thinking", "working", "attention"]);
+        assert.deepStrictEqual(states, ["attention"]);
         done();
       }
     });
@@ -187,13 +171,9 @@ describe("CodexLogMonitor", () => {
     ].join("\n") + "\n");
 
     const config = makeConfig(tmpDir);
-    const states = [];
     monitor = new CodexLogMonitor(config, (sid, state) => {
-      states.push(state);
-      if (states.length === 3) {
-        assert.strictEqual(states[2], "idle");
-        done();
-      }
+      assert.strictEqual(state, "idle");
+      done();
     });
     monitor.start();
   });
@@ -203,10 +183,6 @@ describe("CodexLogMonitor", () => {
     fs.writeFileSync(testFile, [
       '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
       '{"type":"event_msg","payload":{"type":"task_started"}}',
-      '{"type":"response_item","payload":{"type":"function_call","name":"shell_command"}}',
-      '{"type":"response_item","payload":{"type":"function_call","name":"shell_command"}}',
-      '{"type":"response_item","payload":{"type":"function_call","name":"shell_command"}}',
-      '{"type":"event_msg","payload":{"type":"task_complete"}}',
     ].join("\n") + "\n");
 
     const config = makeConfig(tmpDir);
@@ -214,11 +190,19 @@ describe("CodexLogMonitor", () => {
     monitor = new CodexLogMonitor(config, (sid, state) => {
       states.push(state);
       if (state === "attention") {
-        assert.deepStrictEqual(states, ["idle", "thinking", "working", "working", "working", "attention"]);
+        assert.deepStrictEqual(states, ["thinking", "working", "working", "working", "attention"]);
         done();
       }
     });
     monitor.start();
+    setTimeout(() => {
+      fs.appendFileSync(testFile, [
+        '{"type":"response_item","payload":{"type":"function_call","name":"shell_command"}}',
+        '{"type":"response_item","payload":{"type":"function_call","name":"shell_command"}}',
+        '{"type":"response_item","payload":{"type":"function_call","name":"shell_command"}}',
+        '{"type":"event_msg","payload":{"type":"task_complete"}}',
+      ].join("\n") + "\n");
+    }, 150);
   });
 
   it("should ignore Codex subagent rollouts", (_, done) => {
@@ -282,9 +266,72 @@ describe("CodexLogMonitor", () => {
     const states = [];
     monitor = new CodexLogMonitor(config, (_sid, state) => states.push(state));
     monitor._poll(true);
+    fs.appendFileSync(testFile, [
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
+      '{"type":"response_item","payload":{"type":"function_call","name":"shell_command"}}',
+      '{"type":"event_msg","payload":{"type":"task_complete"}}',
+    ].join("\n") + "\n");
     monitor._poll(false);
     monitor._poll(false);
     assert.deepStrictEqual(states, [], "historical completion must remain silent across chunk boundaries");
+  });
+
+  it("coalesces a newly discovered completed rollout into one final notification", (_, done) => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    fs.writeFileSync(testFile, [
+      '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
+      '{"type":"response_item","payload":{"type":"function_call","name":"shell_command"}}',
+      '{"type":"event_msg","payload":{"type":"task_complete"}}',
+    ].join("\n") + "\n");
+    const states = [];
+    monitor = new CodexLogMonitor(makeConfig(tmpDir), (_sid, state, event) => {
+      states.push({ state, event });
+      setTimeout(() => {
+        assert.deepStrictEqual(states, [{ state: "attention", event: "event_msg:task_complete" }]);
+        done();
+      }, 20);
+    });
+    monitor.start();
+  });
+
+  it("forwards the source timestamp with a coalesced state", (_, done) => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    const occurredAt = "2026-08-07T09:35:05.469Z";
+    fs.writeFileSync(testFile, [
+      JSON.stringify({ type: "session_meta", payload: { cwd: "/tmp" } }),
+      JSON.stringify({ timestamp: occurredAt, type: "event_msg", payload: { type: "task_started" } }),
+    ].join("\n") + "\n");
+    monitor = new CodexLogMonitor(makeConfig(tmpDir), (_sid, state, _event, extra) => {
+      assert.strictEqual(state, "thinking");
+      assert.strictEqual(extra.occurredAtMs, Date.parse(occurredAt));
+      done();
+    });
+    monitor.start();
+  });
+
+  it("drains a large startup snapshot without waiting one poll interval per chunk", (_, done) => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    const padding = JSON.stringify({
+      type: "response_item",
+      payload: { type: "reasoning", text: "x".repeat(512 * 1024) },
+    });
+    fs.writeFileSync(testFile, [
+      '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
+      padding,
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
+    ].join("\n") + "\n");
+    const config = makeConfig(tmpDir);
+    config.logConfig.recoverExistingFiles = true;
+    config.logConfig.pollIntervalMs = 1000;
+    config.logConfig.maxReadBytesPerPoll = 32 * 1024;
+    const startedAt = Date.now();
+    monitor = new CodexLogMonitor(config, (_sid, state) => {
+      assert.strictEqual(state, "thinking");
+      assert.ok(Date.now() - startedAt < 900, "recovery should drain through event-loop slices");
+      done();
+    });
+    monitor.start();
   });
 
   it("should handle incremental writes (tail behavior)", (_, done) => {
@@ -296,7 +343,7 @@ describe("CodexLogMonitor", () => {
     monitor = new CodexLogMonitor(config, (sid, state) => {
       states.push(state);
       if (state === "thinking") {
-        assert.deepStrictEqual(states, ["idle", "thinking"]);
+        assert.deepStrictEqual(states, ["thinking"]);
         done();
       }
     });
@@ -319,14 +366,11 @@ describe("CodexLogMonitor", () => {
     ].join("\n") + "\n");
 
     const config = makeConfig(tmpDir);
-    const states = [];
     monitor = new CodexLogMonitor(config, (sid, state) => {
-      states.push(state);
-      if (states.length === 3) {
-        // token_count and reasoning should be ignored; no tool use → idle
-        assert.deepStrictEqual(states, ["idle", "thinking", "idle"]);
-        done();
-      }
+      // token_count and reasoning are ignored; the bootstrap emits only the
+      // final no-tool completion state.
+      assert.strictEqual(state, "idle");
+      done();
     });
     monitor.start();
   });
@@ -385,14 +429,10 @@ describe("CodexLogMonitor", () => {
     ].join("\n") + "\n");
 
     const config = makeConfig(tmpDir);
-    const states = [];
     monitor = new CodexLogMonitor(config, (sid, state) => {
-      states.push(state);
-      if (states.length === 2) {
-        // Should skip corrupted line and continue
-        assert.deepStrictEqual(states, ["idle", "thinking"]);
-        done();
-      }
+      // Should skip corrupted line and publish the final valid state.
+      assert.strictEqual(state, "thinking");
+      done();
     });
     monitor.start();
   });

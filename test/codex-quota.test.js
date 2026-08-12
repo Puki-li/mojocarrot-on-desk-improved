@@ -204,13 +204,17 @@ describe("Codex quota data source", () => {
   });
 
   it("can ingest parsed records from the shared Codex log stream", () => {
-    const source = new CodexQuotaSource();
+    const updateMetadata = [];
+    const source = new CodexQuotaSource({
+      onUpdate: (_quota, metadata) => updateMetadata.push(metadata),
+    });
     const snapshot = source.ingestObject(makeTokenCount({
       timestamp: "2026-08-06T10:00:00.000Z",
       primary: quotaWindow(35, 10080, 1786172497),
-    }));
+    }), { recovering: true });
     assert.strictEqual(snapshot.remainingPercent, 65);
     assert.strictEqual(source.getSnapshot().remainingPercent, 65);
+    assert.strictEqual(updateMetadata[0].recovering, true);
   });
 
   it("loads the latest local quota immediately when started", () => {
