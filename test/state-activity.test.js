@@ -128,4 +128,17 @@ describe("session activity metadata", () => {
     assert.strictEqual(session.state, "working");
     assert.strictEqual(session.activityState, "working");
   });
+
+  it("removes stale hook sessions that never identified a real agent process", () => {
+    api = require("../src/state")(makeCtx());
+    api.updateSession("ghost-gemini", "working", "PreToolUse", process.pid, "/repo", null, null, null, "gemini-cli");
+    const session = api.sessions.get("ghost-gemini");
+    assert.strictEqual(session.pidReachable, true);
+    assert.strictEqual(session.agentPid, null);
+    session.updatedAt = Date.now() - 600001;
+
+    api.cleanStaleSessions();
+
+    assert.strictEqual(api.sessions.has("ghost-gemini"), false);
+  });
 });

@@ -3,6 +3,11 @@
 // Registered in ~/.cursor/hooks.json by hooks/cursor-install.js
 
 const { postStateToRunningServer, readHostPrefix } = require("./server-config");
+const {
+  isExpectedAgentProcess,
+  queryWindowsProcess,
+  shouldForwardAgentHook,
+} = require("./agent-hook-lib");
 
 const HOOK_TO_STATE = {
   sessionStart: { state: "idle", event: "SessionStart" },
@@ -41,20 +46,10 @@ const EDITOR_MAP_WIN = { "code.exe": "code", "cursor.exe": "cursor" };
 const EDITOR_MAP_MAC = { "code": "code", "cursor": "cursor" };
 const EDITOR_MAP_LINUX = { "code": "code", "cursor": "cursor", "code-insiders": "code" };
 
-const CURSOR_NAMES_WIN = new Set(["cursor.exe"]);
-const CURSOR_NAMES_MAC = new Set(["cursor"]);
-const CURSOR_NAMES_LINUX = new Set(["cursor"]);
-
 let _stablePid = null;
 let _detectedEditor = null;
 let _cursorPid = null;
 let _pidChain = [];
-
-function cursorNameSet() {
-  const isWin = process.platform === "win32";
-  if (isWin) return CURSOR_NAMES_WIN;
-  return process.platform === "linux" ? CURSOR_NAMES_LINUX : CURSOR_NAMES_MAC;
-}
 
 function getStablePid() {
   if (_stablePid) return _stablePid;
@@ -63,7 +58,6 @@ function getStablePid() {
   const terminalNames = isWin ? TERMINAL_NAMES_WIN : (process.platform === "linux" ? TERMINAL_NAMES_LINUX : TERMINAL_NAMES_MAC);
   const systemBoundary = isWin ? SYSTEM_BOUNDARY_WIN : (process.platform === "linux" ? SYSTEM_BOUNDARY_LINUX : SYSTEM_BOUNDARY_MAC);
   const editorMap = isWin ? EDITOR_MAP_WIN : (process.platform === "linux" ? EDITOR_MAP_LINUX : EDITOR_MAP_MAC);
-  const cursorNames = cursorNameSet();
   let pid = process.ppid;
   let lastGoodPid = pid;
   let terminalPid = null;
@@ -71,23 +65,20 @@ function getStablePid() {
   _detectedEditor = null;
   _cursorPid = null;
   for (let i = 0; i < 8; i++) {
-    let name, parentPid;
+    let name, parentPid, commandLine = "";
     try {
       if (isWin) {
-        const out = execSync(
-          `wmic process where "ProcessId=${pid}" get Name,ParentProcessId /format:csv`,
-          { encoding: "utf8", timeout: 1500, windowsHide: true }
-        );
-        const lines = out.trim().split("\n").filter(l => l.includes(","));
-        if (!lines.length) break;
-        const parts = lines[lines.length - 1].split(",");
-        name = (parts[1] || "").trim().toLowerCase();
-        parentPid = parseInt(parts[2], 10);
+        const info = queryWindowsProcess(pid, execSync);
+        if (!info) break;
+        name = info.name;
+        parentPid = info.parentPid;
+        commandLine = info.commandLine;
       } else {
         const cp = require("child_process");
         const ppidOut = cp.execSync(`ps -o ppid= -p ${pid}`, { encoding: "utf8", timeout: 1000 }).trim();
         const commOut = cp.execSync(`ps -o comm= -p ${pid}`, { encoding: "utf8", timeout: 1000 }).trim();
         name = require("path").basename(commOut).toLowerCase();
+        commandLine = commOut;
         if (!_detectedEditor) {
           const fullLower = commOut.toLowerCase();
           if (fullLower.includes("visual studio code")) _detectedEditor = "code";
@@ -98,7 +89,7 @@ function getStablePid() {
     } catch { break; }
     _pidChain.push(pid);
     if (!_detectedEditor && editorMap[name]) _detectedEditor = editorMap[name];
-    if (!_cursorPid && cursorNames.has(name)) _cursorPid = pid;
+    if (!_cursorPid && isExpectedAgentProcess("cursor-agent", name, commandLine)) _cursorPid = pid;
     if (systemBoundary.has(name)) break;
     if (terminalNames.has(name)) terminalPid = pid;
     lastGoodPid = pid;
@@ -157,15 +148,24 @@ function runWithPayload(payload) {
     cwd = payload.workspace_roots[0];
   }
 
+  const isRemote = !!process.env.CLAWD_REMOTE;
+  const stablePid = isRemote ? null : getStablePid();
+  const outLine = stdoutForCursorHook(hookNameResolved);
+  if (!shouldForwardAgentHook(isRemote, _cursorPid)) {
+    process.stdout.write(outLine + "\n");
+    process.exit(0);
+    return;
+  }
+
   const body = { state, session_id: sessionId, event };
   body.agent_id = "cursor-agent";
   const hint = displaySvgFromToolHook(hookNameResolved, payload);
   if (hint !== undefined) body.display_svg = hint;
   if (cwd) body.cwd = cwd;
-  if (process.env.CLAWD_REMOTE) {
+  if (isRemote) {
     body.host = readHostPrefix();
   } else {
-    body.source_pid = getStablePid();
+    body.source_pid = stablePid;
     body.editor = _detectedEditor || "cursor";
     if (_cursorPid) {
       body.agent_pid = _cursorPid;
@@ -174,7 +174,6 @@ function runWithPayload(payload) {
     if (_pidChain.length) body.pid_chain = _pidChain;
   }
 
-  const outLine = stdoutForCursorHook(hookNameResolved);
   const data = JSON.stringify(body);
   postStateToRunningServer(data, { timeoutMs: 100 }, () => {
     process.stdout.write(outLine + "\n");
