@@ -12,6 +12,7 @@ const DEFAULT_POLL_INTERVAL_MS = 30000;
 const DEFAULT_MAX_FILES = 50;
 const DEFAULT_MAX_READ_BYTES = 2 * 1024 * 1024;
 const DEFAULT_RECENT_DAYS = 31;
+const DEFAULT_LIMIT_ID = "codex";
 
 function resolveHomePath(value, homedir = os.homedir()) {
   if (!value || value === "~") return value === "~" ? homedir : value;
@@ -87,6 +88,17 @@ function parseQuotaObject(record, options = {}) {
   if (!payload || typeof payload !== "object" || payload.type !== "token_count") return null;
 
   const rateLimits = payload.rate_limits;
+  if (!rateLimits || typeof rateLimits !== "object") return null;
+  const limitId = typeof rateLimits.limit_id === "string" && rateLimits.limit_id
+    ? rateLimits.limit_id
+    : DEFAULT_LIMIT_ID;
+  const expectedLimitId = typeof options.expectedLimitId === "string" && options.expectedLimitId
+    ? options.expectedLimitId
+    : DEFAULT_LIMIT_ID;
+  // Codex can emit independent model-specific pools (for example Spark) in
+  // the same log stream. The main usage panel must not flicker between pools.
+  if (limitId !== expectedLimitId) return null;
+
   const selected = selectLongestWindow(rateLimits);
   if (!selected) return null;
 
@@ -98,9 +110,6 @@ function parseQuotaObject(record, options = {}) {
   const resetDate = new Date(resetsAtMs);
   if (Number.isNaN(resetDate.getTime())) return null;
 
-  const limitId = typeof rateLimits.limit_id === "string" && rateLimits.limit_id
-    ? rateLimits.limit_id
-    : "codex";
   const observedAtMs = parseObservedAt(record.timestamp, options.fallbackObservedAtMs);
 
   return {
@@ -273,7 +282,10 @@ function findLatestQuota(options = {}) {
     const lines = tail.text.split("\n");
     let fileQuota = null;
     for (let index = lines.length - 1; index >= 0; index--) {
-      fileQuota = parseQuotaLine(lines[index], { fallbackObservedAtMs: tail.mtimeMs });
+      fileQuota = parseQuotaLine(lines[index], {
+        fallbackObservedAtMs: tail.mtimeMs,
+        expectedLimitId: options.expectedLimitId,
+      });
       if (fileQuota) break;
     }
     if (!fileQuota) continue;
@@ -304,7 +316,10 @@ async function findLatestQuotaAsync(options = {}) {
     const lines = tail.text.split("\n");
     let fileQuota = null;
     for (let index = lines.length - 1; index >= 0; index--) {
-      fileQuota = parseQuotaLine(lines[index], { fallbackObservedAtMs: tail.mtimeMs });
+      fileQuota = parseQuotaLine(lines[index], {
+        fallbackObservedAtMs: tail.mtimeMs,
+        expectedLimitId: options.expectedLimitId,
+      });
       if (fileQuota) break;
     }
     if (fileQuota) {
@@ -394,6 +409,7 @@ class CodexQuotaSource {
   ingestLine(line, metadata = {}) {
     const snapshot = parseQuotaLine(line, {
       fallbackObservedAtMs: metadata.observedAtMs,
+      expectedLimitId: this._options.expectedLimitId,
     });
     return this._ingestSnapshot(snapshot, metadata);
   }
@@ -401,6 +417,7 @@ class CodexQuotaSource {
   ingestObject(record, metadata = {}) {
     const snapshot = parseQuotaObject(record, {
       fallbackObservedAtMs: metadata.observedAtMs,
+      expectedLimitId: this._options.expectedLimitId,
     });
     return this._ingestSnapshot(snapshot, metadata);
   }
