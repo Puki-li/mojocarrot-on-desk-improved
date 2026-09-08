@@ -11,7 +11,7 @@ const DEFAULT_SESSION_DIR = "~/.codex/sessions";
 const DEFAULT_POLL_INTERVAL_MS = 30000;
 const DEFAULT_MAX_FILES = 50;
 const DEFAULT_MAX_READ_BYTES = 2 * 1024 * 1024;
-const DEFAULT_RECENT_DAYS = 31;
+const DEFAULT_LIMIT_ID = "codex";
 
 function resolveHomePath(value, homedir = os.homedir()) {
   if (!value || value === "~") return value === "~" ? homedir : value;
@@ -87,6 +87,17 @@ function parseQuotaObject(record, options = {}) {
   if (!payload || typeof payload !== "object" || payload.type !== "token_count") return null;
 
   const rateLimits = payload.rate_limits;
+  if (!rateLimits || typeof rateLimits !== "object") return null;
+  const limitId = typeof rateLimits.limit_id === "string" && rateLimits.limit_id
+    ? rateLimits.limit_id
+    : DEFAULT_LIMIT_ID;
+  const expectedLimitId = typeof options.expectedLimitId === "string" && options.expectedLimitId
+    ? options.expectedLimitId
+    : DEFAULT_LIMIT_ID;
+  // Codex can emit independent model-specific pools (for example Spark) in
+  // the same log stream. The main usage panel must not flicker between pools.
+  if (limitId !== expectedLimitId) return null;
+
   const selected = selectLongestWindow(rateLimits);
   if (!selected) return null;
 
@@ -98,9 +109,6 @@ function parseQuotaObject(record, options = {}) {
   const resetDate = new Date(resetsAtMs);
   if (Number.isNaN(resetDate.getTime())) return null;
 
-  const limitId = typeof rateLimits.limit_id === "string" && rateLimits.limit_id
-    ? rateLimits.limit_id
-    : "codex";
   const observedAtMs = parseObservedAt(record.timestamp, options.fallbackObservedAtMs);
 
   return {
@@ -159,9 +167,7 @@ function readFileTail(filePath, fsImpl, maxReadBytes) {
 
 function getRecentSessionDirs(sessionDir, options = {}) {
   const dirs = [];
-  const recentDays = Number.isInteger(options.recentDays) && options.recentDays > 0
-    ? options.recentDays
-    : DEFAULT_RECENT_DAYS;
+  const recentDays = options.recentDays;
   const now = options.now instanceof Date ? options.now : new Date(options.now || Date.now());
 
   for (let daysAgo = 0; daysAgo < recentDays; daysAgo++) {
@@ -177,9 +183,71 @@ function getRecentSessionDirs(sessionDir, options = {}) {
   return dirs;
 }
 
+function isDateDirectory(year, month, day) {
+  if (!/^\d{4}$/.test(year) || !/^(0[1-9]|1[0-2])$/.test(month) || !/^(0[1-9]|[12]\d|3[01])$/.test(day)) {
+    return false;
+  }
+  const date = new Date(Number(year), Number(month) - 1, Number(day));
+  return date.getFullYear() === Number(year) &&
+    date.getMonth() + 1 === Number(month) &&
+    date.getDate() === Number(day);
+}
+
+function getExistingSessionDirs(sessionDir, fsImpl) {
+  const dirs = [];
+  let years;
+  try { years = fsImpl.readdirSync(sessionDir, { withFileTypes: true }); } catch { return dirs; }
+  for (const year of years) {
+    if (!year.isDirectory() || !/^\d{4}$/.test(year.name)) continue;
+    const yearDir = path.join(sessionDir, year.name);
+    let months;
+    try { months = fsImpl.readdirSync(yearDir, { withFileTypes: true }); } catch { continue; }
+    for (const month of months) {
+      if (!month.isDirectory() || !/^(0[1-9]|1[0-2])$/.test(month.name)) continue;
+      const monthDir = path.join(yearDir, month.name);
+      let days;
+      try { days = fsImpl.readdirSync(monthDir, { withFileTypes: true }); } catch { continue; }
+      for (const day of days) {
+        if (day.isDirectory() && isDateDirectory(year.name, month.name, day.name)) {
+          dirs.push(path.join(monthDir, day.name));
+        }
+      }
+    }
+  }
+  return dirs.sort().reverse();
+}
+
+async function getExistingSessionDirsAsync(sessionDir, fsPromises) {
+  const dirs = [];
+  let years;
+  try { years = await fsPromises.readdir(sessionDir, { withFileTypes: true }); } catch { return dirs; }
+  for (const year of years) {
+    if (!year.isDirectory() || !/^\d{4}$/.test(year.name)) continue;
+    const yearDir = path.join(sessionDir, year.name);
+    let months;
+    try { months = await fsPromises.readdir(yearDir, { withFileTypes: true }); } catch { continue; }
+    for (const month of months) {
+      if (!month.isDirectory() || !/^(0[1-9]|1[0-2])$/.test(month.name)) continue;
+      const monthDir = path.join(yearDir, month.name);
+      let days;
+      try { days = await fsPromises.readdir(monthDir, { withFileTypes: true }); } catch { continue; }
+      for (const day of days) {
+        if (day.isDirectory() && isDateDirectory(year.name, month.name, day.name)) {
+          dirs.push(path.join(monthDir, day.name));
+        }
+      }
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  return dirs.sort().reverse();
+}
+
 function findRolloutFiles(sessionDir, fsImpl, options = {}) {
   const files = [];
-  for (const directory of getRecentSessionDirs(sessionDir, options)) {
+  const directories = Number.isInteger(options.recentDays) && options.recentDays > 0
+    ? getRecentSessionDirs(sessionDir, options)
+    : getExistingSessionDirs(sessionDir, fsImpl);
+  for (const directory of directories) {
     let entries;
     try {
       entries = fsImpl.readdirSync(directory, { withFileTypes: true });
@@ -229,7 +297,10 @@ async function readFileTailAsync(filePath, fsPromises, maxReadBytes) {
 
 async function findRolloutFilesAsync(sessionDir, fsPromises, options = {}) {
   const files = [];
-  for (const directory of getRecentSessionDirs(sessionDir, options)) {
+  const directories = Number.isInteger(options.recentDays) && options.recentDays > 0
+    ? getRecentSessionDirs(sessionDir, options)
+    : await getExistingSessionDirsAsync(sessionDir, fsPromises);
+  for (const directory of directories) {
     let entries;
     try {
       entries = await fsPromises.readdir(directory, { withFileTypes: true });
@@ -273,7 +344,10 @@ function findLatestQuota(options = {}) {
     const lines = tail.text.split("\n");
     let fileQuota = null;
     for (let index = lines.length - 1; index >= 0; index--) {
-      fileQuota = parseQuotaLine(lines[index], { fallbackObservedAtMs: tail.mtimeMs });
+      fileQuota = parseQuotaLine(lines[index], {
+        fallbackObservedAtMs: tail.mtimeMs,
+        expectedLimitId: options.expectedLimitId,
+      });
       if (fileQuota) break;
     }
     if (!fileQuota) continue;
@@ -304,7 +378,10 @@ async function findLatestQuotaAsync(options = {}) {
     const lines = tail.text.split("\n");
     let fileQuota = null;
     for (let index = lines.length - 1; index >= 0; index--) {
-      fileQuota = parseQuotaLine(lines[index], { fallbackObservedAtMs: tail.mtimeMs });
+      fileQuota = parseQuotaLine(lines[index], {
+        fallbackObservedAtMs: tail.mtimeMs,
+        expectedLimitId: options.expectedLimitId,
+      });
       if (fileQuota) break;
     }
     if (fileQuota) {
@@ -362,10 +439,7 @@ class CodexQuotaSource {
 
   poll() {
     const snapshot = findLatestQuota(this._options);
-    if (snapshot && !snapshotsEqual(snapshot, this._snapshot)) {
-      this._snapshot = snapshot;
-      this._onUpdate(snapshot);
-    }
+    this._commitSnapshot(snapshot);
     return this._snapshot;
   }
 
@@ -377,10 +451,7 @@ class CodexQuotaSource {
     this._pollPromise = Promise.resolve()
       .then(() => scan(this._options))
       .then((snapshot) => {
-        if (snapshot && !snapshotsEqual(snapshot, this._snapshot)) {
-          this._snapshot = snapshot;
-          this._onUpdate(snapshot);
-        }
+        this._commitSnapshot(snapshot);
         return this._snapshot;
       })
       .catch((err) => {
@@ -394,6 +465,7 @@ class CodexQuotaSource {
   ingestLine(line, metadata = {}) {
     const snapshot = parseQuotaLine(line, {
       fallbackObservedAtMs: metadata.observedAtMs,
+      expectedLimitId: this._options.expectedLimitId,
     });
     return this._ingestSnapshot(snapshot, metadata);
   }
@@ -401,6 +473,7 @@ class CodexQuotaSource {
   ingestObject(record, metadata = {}) {
     const snapshot = parseQuotaObject(record, {
       fallbackObservedAtMs: metadata.observedAtMs,
+      expectedLimitId: this._options.expectedLimitId,
     });
     return this._ingestSnapshot(snapshot, metadata);
   }
@@ -411,13 +484,20 @@ class CodexQuotaSource {
     const withSource = metadata.sourceFile
       ? { ...snapshot, sourceFile: metadata.sourceFile }
       : snapshot;
-    if (!this._snapshot || withSource.observedAtMs >= this._snapshot.observedAtMs) {
-      if (!snapshotsEqual(withSource, this._snapshot)) {
-        this._snapshot = withSource;
-        this._onUpdate(withSource, metadata);
-      }
-    }
+    this._commitSnapshot(withSource, metadata);
     return withSource;
+  }
+
+  _commitSnapshot(snapshot, metadata = {}) {
+    if (!snapshot) return false;
+    // An asynchronous archive scan may have started before a newer token_count
+    // record arrived through the live monitor. Never let that stale result roll
+    // the visible quota backwards when the scan eventually resolves.
+    if (this._snapshot && snapshot.observedAtMs < this._snapshot.observedAtMs) return false;
+    if (snapshotsEqual(snapshot, this._snapshot)) return false;
+    this._snapshot = snapshot;
+    this._onUpdate(snapshot, metadata);
+    return true;
   }
 
   getSnapshot() {

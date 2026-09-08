@@ -171,6 +171,46 @@ describe("server-config helpers", () => {
     });
   });
 
+  it("finishes a timed-out port probe only once when destroy also emits error", async () => {
+    const req = new (require("node:events").EventEmitter)();
+    req.destroy = () => req.emit("error", new Error("destroyed"));
+    let callbacks = 0;
+
+    serverConfig.probePort(23333, 100, () => { callbacks++; }, {
+      httpGet() {
+        setImmediate(() => req.emit("timeout"));
+        return req;
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.strictEqual(callbacks, 1);
+  });
+
+  it("continues to a healthy fallback after a timed-out direct post", async () => {
+    const completions = [];
+    await new Promise((resolve) => {
+      serverConfig.postStateToRunningServer("{}", {
+        preferredPort: 23333,
+        runtimePort: null,
+        postStateToPort(port, _payload, _timeout, cb) {
+          if (port === 23333) {
+            cb(false, port);
+            cb(false, port);
+          } else {
+            cb(true, port);
+          }
+        },
+        probePort(_port, _timeout, cb) { cb(true); },
+      }, (ok, port) => {
+        completions.push({ ok, port });
+        resolve();
+      });
+    });
+
+    assert.deepStrictEqual(completions, [{ ok: true, port: 23334 }]);
+  });
+
   it("postStateToRunningServer probes fallback ports before posting", async () => {
     const probes = [];
     const posts = [];

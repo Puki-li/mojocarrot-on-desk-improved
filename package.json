@@ -1,6 +1,6 @@
 {
   "name": "mojocarrot-on-desk",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A Mojocarrot-themed desktop pet derived from rullerzhou-afk/clawd-on-desk that reacts to your AI coding agent sessions in real-time.",
   "main": "src/main.js",
   "scripts": {

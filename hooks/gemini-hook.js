@@ -3,6 +3,11 @@
 // Registered in ~/.gemini/settings.json by hooks/gemini-install.js
 
 const { postStateToRunningServer, readHostPrefix } = require("./server-config");
+const {
+  isExpectedAgentProcess,
+  queryWindowsProcess,
+  shouldForwardAgentHook,
+} = require("./agent-hook-lib");
 
 // Gemini hook event → { state, event } for the Clawd state machine
 const HOOK_MAP = {
@@ -42,10 +47,6 @@ const EDITOR_MAP_WIN = { "code.exe": "code", "cursor.exe": "cursor" };
 const EDITOR_MAP_MAC = { "code": "code", "cursor": "cursor" };
 const EDITOR_MAP_LINUX = { "code": "code", "cursor": "cursor", "code-insiders": "code" };
 
-const GEMINI_NAMES_WIN = new Set(["gemini.exe"]);
-const GEMINI_NAMES_MAC = new Set(["gemini"]);
-const GEMINI_NAMES_LINUX = new Set(["gemini"]);
-
 let _stablePid = null;
 let _detectedEditor = null;
 let _geminiPid = null;
@@ -58,7 +59,6 @@ function getStablePid() {
   const terminalNames = isWin ? TERMINAL_NAMES_WIN : (process.platform === "linux" ? TERMINAL_NAMES_LINUX : TERMINAL_NAMES_MAC);
   const systemBoundary = isWin ? SYSTEM_BOUNDARY_WIN : (process.platform === "linux" ? SYSTEM_BOUNDARY_LINUX : SYSTEM_BOUNDARY_MAC);
   const editorMap = isWin ? EDITOR_MAP_WIN : (process.platform === "linux" ? EDITOR_MAP_LINUX : EDITOR_MAP_MAC);
-  const geminiNames = isWin ? GEMINI_NAMES_WIN : (process.platform === "linux" ? GEMINI_NAMES_LINUX : GEMINI_NAMES_MAC);
   let pid = process.ppid;
   let lastGoodPid = pid;
   let terminalPid = null;
@@ -66,23 +66,23 @@ function getStablePid() {
   _detectedEditor = null;
   _geminiPid = null;
   for (let i = 0; i < 8; i++) {
-    let name, parentPid;
+    let name, parentPid, commandLine = "";
     try {
       if (isWin) {
-        const out = execSync(
-          `wmic process where "ProcessId=${pid}" get Name,ParentProcessId /format:csv`,
-          { encoding: "utf8", timeout: 1500, windowsHide: true }
-        );
-        const lines = out.trim().split("\n").filter(l => l.includes(","));
-        if (!lines.length) break;
-        const parts = lines[lines.length - 1].split(",");
-        name = (parts[1] || "").trim().toLowerCase();
-        parentPid = parseInt(parts[2], 10);
+        const info = queryWindowsProcess(pid, execSync);
+        if (!info) break;
+        name = info.name;
+        parentPid = info.parentPid;
+        commandLine = info.commandLine;
       } else {
         const cp = require("child_process");
         const ppidOut = cp.execSync(`ps -o ppid= -p ${pid}`, { encoding: "utf8", timeout: 1000 }).trim();
         const commOut = cp.execSync(`ps -o comm= -p ${pid}`, { encoding: "utf8", timeout: 1000 }).trim();
         name = require("path").basename(commOut).toLowerCase();
+        commandLine = commOut;
+        if (name === "node") {
+          try { commandLine = cp.execSync(`ps -o command= -p ${pid}`, { encoding: "utf8", timeout: 500 }); } catch {}
+        }
         if (!_detectedEditor) {
           const fullLower = commOut.toLowerCase();
           if (fullLower.includes("visual studio code")) _detectedEditor = "code";
@@ -93,7 +93,7 @@ function getStablePid() {
     } catch { break; }
     _pidChain.push(pid);
     if (!_detectedEditor && editorMap[name]) _detectedEditor = editorMap[name];
-    if (!_geminiPid && geminiNames.has(name)) _geminiPid = pid;
+    if (!_geminiPid && isExpectedAgentProcess("gemini-cli", name, commandLine)) _geminiPid = pid;
     if (systemBoundary.has(name)) break;
     if (terminalNames.has(name)) terminalPid = pid;
     lastGoodPid = pid;
@@ -136,19 +136,27 @@ function finishOnce(payload) {
   const sessionId = (payload && payload.session_id) || "default";
   const cwd = (payload && payload.cwd) || "";
 
+  const isRemote = !!process.env.CLAWD_REMOTE;
+  const stablePid = isRemote ? null : getStablePid();
+  const outLine = stdoutForEvent(hookName);
+  if (!shouldForwardAgentHook(isRemote, _geminiPid)) {
+    process.stdout.write(outLine + "\n");
+    process.exit(0);
+    return;
+  }
+
   const body = { state, session_id: sessionId, event };
   body.agent_id = "gemini-cli";
   if (cwd) body.cwd = cwd;
-  if (process.env.CLAWD_REMOTE) {
+  if (isRemote) {
     body.host = readHostPrefix();
   } else {
-    body.source_pid = getStablePid();
+    body.source_pid = stablePid;
     if (_detectedEditor) body.editor = _detectedEditor;
     if (_geminiPid) body.agent_pid = _geminiPid;
     if (_pidChain.length) body.pid_chain = _pidChain;
   }
 
-  const outLine = stdoutForEvent(hookName);
   const data = JSON.stringify(body);
   postStateToRunningServer(data, { timeoutMs: 100 }, () => {
     process.stdout.write(outLine + "\n");

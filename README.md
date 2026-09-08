@@ -7,7 +7,7 @@
 </p>
 <p align="center">
   <a href="https://github.com/Puki-li/mojocarrot-on-desk-improved/actions/workflows/test.yml"><img src="https://github.com/Puki-li/mojocarrot-on-desk-improved/actions/workflows/test.yml/badge.svg" alt="Test"></a>
-  <img src="https://img.shields.io/badge/version-1.0.1-2ea44f" alt="Version 1.0.1">
+  <img src="https://img.shields.io/badge/version-1.0.2-2ea44f" alt="Version 1.0.2">
 </p>
 
 A desktop pet that reacts to your AI coding agent sessions in real-time. This repository maintains a Mojocarrot-themed derivative of the public project [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk), adapted into **Mojocarrot on Desk** for WMLS with reworked scene choreography, multi-agent activity tracking, and Codex-focused tooling.
@@ -15,6 +15,13 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. This re
 > Supports Windows 11, macOS, and Ubuntu/Linux. Requires Node.js. Works with **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, and **Cursor Agent**.
 
 ## Features
+
+### What's New in v1.0.2
+- **Correct agent attribution** — standalone or mirrored hooks no longer create Claude Code, Gemini, Cursor, or Copilot activity for a different tool
+- **Stable Codex quota** — the main weekly pool is isolated from model-specific limits, and slow archive scans cannot overwrite newer live usage
+- **Historical task recovery** — resumed Codex tasks remain discoverable in their original date directories, including long-running turns that were already quiet when Mojocarrot started
+- **Reliable long-turn completion** — liveness heartbeats no longer outrank slightly delayed completion records; local and remote monitors keep active sessions fresh
+- **Safer recovery and delivery** — unreadable logs cannot spin the main process, malformed JSONL records are skipped, and hook port fallback completes exactly once
 
 ### What's New in v1.0.1
 - **Stable Codex startup** — bootstrap log events are coalesced so the pet and status pill no longer bounce through transient Idle, Thinking, and Working states

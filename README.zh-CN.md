@@ -7,7 +7,7 @@
 </p>
 <p align="center">
   <a href="https://github.com/Puki-li/mojocarrot-on-desk-improved/actions/workflows/test.yml"><img src="https://github.com/Puki-li/mojocarrot-on-desk-improved/actions/workflows/test.yml/badge.svg" alt="Test"></a>
-  <img src="https://img.shields.io/badge/version-1.0.1-2ea44f" alt="Version 1.0.1">
+  <img src="https://img.shields.io/badge/version-1.0.2-2ea44f" alt="Version 1.0.2">
 </p>
 
 一个能实时感知 AI 编程助手工作状态的桌面宠物。项目基于公开仓库 [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk) 改造而来，保留原项目的多 Agent 运行机制，同时把屏幕上的主角色替换为 **给 WMLS 们的 Mojocarrot**，并在 v1.0.0 中加入统一活跃状态、Codex 额度与更准确的会话识别。
@@ -15,6 +15,13 @@
 > 支持 Windows 11、macOS 和 Ubuntu/Linux。需要 Node.js。支持 **Claude Code**、**Codex CLI**、**Copilot CLI**、**Gemini CLI** 与 **Cursor Agent**。
 
 ## 功能特性
+
+### v1.0.2 重点更新
+- **Agent 归属更准确** — 独立或镜像 hook 不再让 Claude Code、Gemini、Cursor、Copilot 错报成另一个工具的活动
+- **Codex 额度更稳定** — 主周额度与模型专属额度隔离，较慢的历史扫描也不会覆盖更新的实时用量
+- **历史任务可恢复** — Codex 任务从原创建日期目录继续执行时仍可发现，包括 Mojocarrot 启动前已静默一段时间的长任务
+- **长任务完成更可靠** — 存活心跳不再压过稍晚落盘的完成事件，本地与远程监控都会持续刷新真实活跃会话
+- **恢复与投递更安全** — 不可读日志不会造成主进程空转，异常 JSONL 会被跳过，hook 端口回退只会完成一次
 
 ### v1.0.1 重点更新
 - **Codex 启动状态稳定** — 合并日志首批事件，桌宠和状态栏不再快速经历 Idle、思考中与工作中等过渡状态

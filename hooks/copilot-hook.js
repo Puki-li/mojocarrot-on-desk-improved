@@ -5,6 +5,11 @@
 // Reads stdin JSON from Copilot CLI for sessionId (camelCase)
 
 const { postStateToRunningServer } = require("./server-config");
+const {
+  isExpectedAgentProcess,
+  queryWindowsProcess,
+  shouldForwardAgentHook,
+} = require("./agent-hook-lib");
 
 const EVENT_TO_STATE = {
   sessionStart: "idle",
@@ -49,10 +54,6 @@ const EDITOR_MAP_WIN = { "code.exe": "code", "cursor.exe": "cursor" };
 const EDITOR_MAP_MAC = { "code": "code", "cursor": "cursor" };
 const EDITOR_MAP_LINUX = { "code": "code", "cursor": "cursor", "code-insiders": "code" };
 
-// Copilot CLI process detection
-const COPILOT_NAMES_WIN = new Set(["copilot.exe"]);
-const COPILOT_NAMES_MAC = new Set(["copilot"]);
-
 let _stablePid = null;
 let _detectedEditor = null;
 let _copilotPid = null;
@@ -71,25 +72,24 @@ function getStablePid() {
   _pidChain = [];
   _detectedEditor = null;
   _copilotPid = null;
-  const copilotNames = isWin ? COPILOT_NAMES_WIN : COPILOT_NAMES_MAC;
   for (let i = 0; i < 8; i++) {
-    let name, parentPid;
+    let name, parentPid, commandLine = "";
     try {
       if (isWin) {
-        const out = execSync(
-          `wmic process where "ProcessId=${pid}" get Name,ParentProcessId /format:csv`,
-          { encoding: "utf8", timeout: 1500, windowsHide: true }
-        );
-        const lines = out.trim().split("\n").filter(l => l.includes(","));
-        if (!lines.length) break;
-        const parts = lines[lines.length - 1].split(",");
-        name = (parts[1] || "").trim().toLowerCase();
-        parentPid = parseInt(parts[2], 10);
+        const info = queryWindowsProcess(pid, execSync);
+        if (!info) break;
+        name = info.name;
+        parentPid = info.parentPid;
+        commandLine = info.commandLine;
       } else {
         const cp = require("child_process");
         const ppidOut = cp.execSync(`ps -o ppid= -p ${pid}`, { encoding: "utf8", timeout: 1000 }).trim();
         const commOut = cp.execSync(`ps -o comm= -p ${pid}`, { encoding: "utf8", timeout: 1000 }).trim();
         name = require("path").basename(commOut).toLowerCase();
+        commandLine = commOut;
+        if (name === "node") {
+          try { commandLine = cp.execSync(`ps -o command= -p ${pid}`, { encoding: "utf8", timeout: 500 }); } catch {}
+        }
         if (!_detectedEditor) {
           const fullLower = commOut.toLowerCase();
           if (fullLower.includes("visual studio code")) _detectedEditor = "code";
@@ -100,20 +100,7 @@ function getStablePid() {
     } catch { break; }
     _pidChain.push(pid);
     if (!_detectedEditor && editorMap[name]) _detectedEditor = editorMap[name];
-    // Copilot CLI detection: direct binary match, or node.exe running @github/copilot
-    if (!_copilotPid) {
-      if (copilotNames.has(name)) {
-        _copilotPid = pid;
-      } else if (name === "node.exe" || name === "node") {
-        try {
-          const cmdOut = isWin
-            ? execSync(`wmic process where "ProcessId=${pid}" get CommandLine /format:csv`,
-                { encoding: "utf8", timeout: 500, windowsHide: true })
-            : execSync(`ps -o command= -p ${pid}`, { encoding: "utf8", timeout: 500 });
-          if (cmdOut.includes("@github/copilot")) _copilotPid = pid;
-        } catch {}
-      }
-    }
+    if (!_copilotPid && isExpectedAgentProcess("copilot-cli", name, commandLine)) _copilotPid = pid;
     if (systemBoundary.has(name)) break;
     if (terminalNames.has(name)) terminalPid = pid;
     lastGoodPid = pid;
@@ -150,10 +137,16 @@ function send(sessionId, cwd) {
   if (sent) return;
   sent = true;
 
+  const stablePid = getStablePid();
+  if (!shouldForwardAgentHook(false, _copilotPid)) {
+    process.exit(0);
+    return;
+  }
+
   const body = { state, session_id: sessionId, event };
   body.agent_id = "copilot-cli";
   if (cwd) body.cwd = cwd;
-  body.source_pid = getStablePid();
+  body.source_pid = stablePid;
   if (_detectedEditor) body.editor = _detectedEditor;
   if (_copilotPid) body.agent_pid = _copilotPid;
   if (_pidChain.length) body.pid_chain = _pidChain;

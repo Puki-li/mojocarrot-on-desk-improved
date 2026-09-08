@@ -89,6 +89,9 @@ const sessions = new Map();
 const SESSION_STALE_MS = 600000;
 const WORKING_STALE_MS = 300000;
 const PASSIVE_HOOK_STALE_MS = 90000;
+const PROCESS_ATTRIBUTED_AGENT_IDS = new Set([
+  "claude-code", "cursor-agent", "gemini-cli", "copilot-cli",
+]);
 const PASSIVE_HOOK_EVENTS = new Set(["PostToolUse", "SubagentStop"]);
 let startupRecoveryActive = false;
 let startupRecoveryTimer = null;
@@ -475,7 +478,8 @@ function cleanStaleSessions() {
 
     if (age > SESSION_STALE_MS) {
       if (s.pidReachable && s.sourcePid) {
-        if (!isProcessAlive(s.sourcePid)) {
+        if (!isProcessAlive(s.sourcePid) ||
+            (!s.agentPid && PROCESS_ATTRIBUTED_AGENT_IDS.has(s.agentId))) {
           if (!s.headless) removedNonHeadless = true;
           sessions.delete(id); changed = true;
         } else if (s.state !== "idle") {

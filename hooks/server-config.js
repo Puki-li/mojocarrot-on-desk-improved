@@ -215,7 +215,17 @@ function isClawdResponse(res, body) {
   }
 }
 
+function onceCallback(callback) {
+  let called = false;
+  return (...args) => {
+    if (called) return;
+    called = true;
+    callback(...args);
+  };
+}
+
 function probePort(port, timeoutMs, callback, options = {}) {
+  const finish = onceCallback(callback);
   const httpGet = options.httpGet || http.get;
   const req = httpGet(
     { hostname: "127.0.0.1", port, path: STATE_PATH, timeout: timeoutMs },
@@ -225,18 +235,19 @@ function probePort(port, timeoutMs, callback, options = {}) {
       res.on("data", (chunk) => {
         if (body.length < 256) body += chunk;
       });
-      res.on("end", () => callback(isClawdResponse(res, body)));
+      res.on("end", () => finish(isClawdResponse(res, body)));
     }
   );
 
-  req.on("error", () => callback(false));
+  req.on("error", () => finish(false));
   req.on("timeout", () => {
     req.destroy();
-    callback(false);
+    finish(false);
   });
 }
 
 function postStateToPort(port, payload, timeoutMs, callback, options = {}) {
+  const finish = onceCallback(callback);
   const httpRequest = options.httpRequest || http.request;
   const authToken = options.authToken || readAuthToken();
   const headers = {
@@ -257,7 +268,7 @@ function postStateToPort(port, payload, timeoutMs, callback, options = {}) {
       const successful = Number(res.statusCode) >= 200 && Number(res.statusCode) < 300;
       if (successful && readHeader(res, CLAWD_SERVER_HEADER) === CLAWD_SERVER_ID) {
         res.resume();
-        callback(true, port);
+        finish(true, port);
         return;
       }
 
@@ -266,19 +277,20 @@ function postStateToPort(port, payload, timeoutMs, callback, options = {}) {
       res.on("data", (chunk) => {
         if (responseBody.length < 256) responseBody += chunk;
       });
-      res.on("end", () => callback(successful && isClawdResponse(res, responseBody), port));
+      res.on("end", () => finish(successful && isClawdResponse(res, responseBody), port));
     }
   );
 
-  req.on("error", () => callback(false, port));
+  req.on("error", () => finish(false, port));
   req.on("timeout", () => {
     req.destroy();
-    callback(false, port);
+    finish(false, port);
   });
   req.end(payload);
 }
 
 function discoverClawdPort(options, callback) {
+  const finish = onceCallback(callback);
   const timeoutMs = options && options.timeoutMs ? options.timeoutMs : 100;
   const ports = getPortCandidates(options && options.preferredPort, options);
   const probe = options && options.probePort ? options.probePort : probePort;
@@ -286,24 +298,25 @@ function discoverClawdPort(options, callback) {
 
   const tryNext = () => {
     if (index >= ports.length) {
-      callback(null);
+      finish(null);
       return;
     }
 
     const port = ports[index++];
-    probe(port, timeoutMs, (ok) => {
+    probe(port, timeoutMs, onceCallback((ok) => {
       if (ok) {
-        callback(port);
+        finish(port);
         return;
       }
       tryNext();
-    }, options);
+    }), options);
   };
 
   tryNext();
 }
 
 function postStateToRunningServer(body, options, callback) {
+  const finish = onceCallback(callback);
   const timeoutMs = options && options.timeoutMs ? options.timeoutMs : 100;
   const payload = typeof body === "string" ? body : JSON.stringify(body);
   const { direct, fallback } = splitPortCandidates(options && options.preferredPort, options);
@@ -314,24 +327,24 @@ function postStateToRunningServer(body, options, callback) {
 
   const tryFallback = () => {
     if (fallbackIndex >= fallback.length) {
-      callback(false, null);
+      finish(false, null);
       return;
     }
 
     const port = fallback[fallbackIndex++];
-    probe(port, timeoutMs, (ok) => {
+    probe(port, timeoutMs, onceCallback((ok) => {
       if (!ok) {
         tryFallback();
         return;
       }
-      post(port, payload, timeoutMs, (posted, confirmedPort) => {
+      post(port, payload, timeoutMs, onceCallback((posted, confirmedPort) => {
         if (posted) {
-          callback(true, confirmedPort);
+          finish(true, confirmedPort);
           return;
         }
         tryFallback();
-      }, options);
-    }, options);
+      }), options);
+    }), options);
   };
 
   const tryDirect = () => {
@@ -341,13 +354,13 @@ function postStateToRunningServer(body, options, callback) {
     }
 
     const port = direct[directIndex++];
-    post(port, payload, timeoutMs, (posted, confirmedPort) => {
+    post(port, payload, timeoutMs, onceCallback((posted, confirmedPort) => {
       if (posted) {
-        callback(true, confirmedPort);
+        finish(true, confirmedPort);
         return;
       }
       tryDirect();
-    }, options);
+    }), options);
   };
 
   tryDirect();
