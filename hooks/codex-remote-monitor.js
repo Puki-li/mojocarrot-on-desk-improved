@@ -27,6 +27,9 @@ const POLL_INTERVAL_MS = 1500;
 const MAX_READ_BYTES_PER_POLL = 256 * 1024;
 const IN_FLIGHT_HEARTBEAT_MS = 30000;
 const MAX_IN_FLIGHT_STALE_MS = 6 * 60 * 60 * 1000;
+const FULL_DIRECTORY_SCAN_MS = 60000;
+const STARTUP_ACTIVE_PROBE_BYTES = 256 * 1024;
+const STARTUP_ACTIVE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 // ── CLI args ──
 
@@ -42,21 +45,45 @@ const hostPrefix = readHostPrefix();
 // Map<filePath, { offset, sessionId, cwd, lastEventTime, lastState, partial }>
 const tracked = new Map();
 let recoveryDrainImmediate = null;
+let lastFullDirectoryScan = 0;
 
 // ── Core polling logic (mirrors agents/codex-log-monitor.js) ──
 
-function getSessionDirs() {
+function getCurrentSessionDir(now = new Date()) {
+  return path.join(
+    SESSION_DIR,
+    String(now.getFullYear()),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0")
+  );
+}
+
+function getAllSessionDirs() {
   const dirs = [];
-  const now = new Date();
-  for (let daysAgo = 0; daysAgo <= 1; daysAgo++) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - daysAgo);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    dirs.push(path.join(SESSION_DIR, String(yyyy), mm, dd));
+  let years;
+  try { years = fs.readdirSync(SESSION_DIR, { withFileTypes: true }); } catch { return dirs; }
+  for (const year of years) {
+    if (!year.isDirectory() || !/^\d{4}$/.test(year.name)) continue;
+    const yearDir = path.join(SESSION_DIR, year.name);
+    let months;
+    try { months = fs.readdirSync(yearDir, { withFileTypes: true }); } catch { continue; }
+    for (const month of months) {
+      if (!month.isDirectory() || !/^(0[1-9]|1[0-2])$/.test(month.name)) continue;
+      const monthDir = path.join(yearDir, month.name);
+      let days;
+      try { days = fs.readdirSync(monthDir, { withFileTypes: true }); } catch { continue; }
+      for (const day of days) {
+        if (!day.isDirectory() || !/^(0[1-9]|[12]\d|3[01])$/.test(day.name)) continue;
+        const date = new Date(Number(year.name), Number(month.name) - 1, Number(day.name));
+        if (
+          date.getFullYear() === Number(year.name) &&
+          date.getMonth() + 1 === Number(month.name) &&
+          date.getDate() === Number(day.name)
+        ) dirs.push(path.join(monthDir, day.name));
+      }
+    }
   }
-  return dirs;
+  return dirs.sort().reverse();
 }
 
 function extractSessionId(fileName) {
@@ -91,6 +118,7 @@ function processLine(line, entry, emit = true) {
   } catch {
     return;
   }
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return;
 
   const type = obj.type;
   const payload = obj.payload;
@@ -122,8 +150,6 @@ function processLine(line, entry, emit = true) {
   if (mappedState === undefined || mappedState === null) return;
   const state = resolveCodexEventState(key, entry);
 
-  // Avoid spamming same state
-  if (state === entry.lastState && state === "working") return;
   entry.lastState = state;
   entry.lastEventKey = key;
   entry.lastEventOccurredAtMs = occurredAtMs;
@@ -143,7 +169,7 @@ function refreshInFlight(entry) {
   const state = entry.lastState === "working" ? "working" : "thinking";
   entry.lastHeartbeatAt = now;
   entry.lastEventTime = now;
-  postState(entry.sessionId, state, "codex-heartbeat", entry.cwd, now);
+  postState(entry.sessionId, state, "codex-heartbeat", entry.cwd, entry.lastEventOccurredAtMs);
 }
 
 function finishRecovery(entry) {
@@ -266,6 +292,43 @@ function pollFile(filePath, fileName, recoverExisting = false) {
   finishRecovery(entry);
 }
 
+function isLikelyActiveRollout(filePath, stat) {
+  if (!stat || !stat.isFile() || stat.size <= 0) return false;
+  const readLength = Math.min(stat.size, STARTUP_ACTIVE_PROBE_BYTES);
+  const start = stat.size - readLength;
+  let fd;
+  let text;
+  try {
+    fd = fs.openSync(filePath, "r");
+    const buffer = Buffer.alloc(readLength);
+    const bytesRead = fs.readSync(fd, buffer, 0, readLength, start);
+    text = buffer.subarray(0, bytesRead).toString("utf8");
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) {
+      try { fs.closeSync(fd); } catch {}
+    }
+  }
+  if (start > 0) {
+    const firstNewline = text.indexOf("\n");
+    text = firstNewline >= 0 ? text.slice(firstNewline + 1) : "";
+  }
+  const lines = text.split("\n");
+  for (let index = lines.length - 1; index >= 0; index--) {
+    let record;
+    try { record = JSON.parse(lines[index]); } catch { continue; }
+    if (!record || typeof record !== "object" || Array.isArray(record)) continue;
+    const payload = record.payload;
+    const subtype = payload && typeof payload === "object" ? payload.type || "" : "";
+    const key = subtype ? `${record.type}:${subtype}` : record.type;
+    const mapped = LOG_EVENT_MAP[key];
+    if (mapped === undefined || mapped === null) continue;
+    return mapped !== "codex-turn-end" && key !== "event_msg:turn_aborted";
+  }
+  return false;
+}
+
 function cleanStaleFiles() {
   const now = Date.now();
   for (const [filePath, entry] of tracked) {
@@ -274,14 +337,22 @@ function cleanStaleFiles() {
         refreshInFlight(entry);
         continue;
       }
-      postState(entry.sessionId, "sleeping", "stale-cleanup", entry.cwd);
+      if (!entry.isSubagent && entry.reported) {
+        postState(entry.sessionId, "sleeping", "stale-cleanup", entry.cwd);
+      }
       tracked.delete(filePath);
     }
   }
 }
 
 function poll(recoverExisting = false) {
-  const dirs = getSessionDirs();
+  const now = Date.now();
+  const includeArchive = recoverExisting || now - lastFullDirectoryScan >= FULL_DIRECTORY_SCAN_MS;
+  const currentDir = getCurrentSessionDir();
+  const dirs = new Set(includeArchive ? getAllSessionDirs() : [currentDir]);
+  dirs.add(currentDir);
+  if (includeArchive) lastFullDirectoryScan = now;
+  for (const filePath of tracked.keys()) dirs.add(path.dirname(filePath));
   for (const dir of dirs) {
     let files;
     try {
@@ -289,14 +360,17 @@ function poll(recoverExisting = false) {
     } catch {
       continue;
     }
-    const now = Date.now();
     for (const file of files) {
       if (!file.startsWith("rollout-") || !file.endsWith(".jsonl")) continue;
       const filePath = path.join(dir, file);
       if (!tracked.has(filePath)) {
         try {
-          const mtime = fs.statSync(filePath).mtimeMs;
-          if (now - mtime > 120000) continue;
+          const stat = fs.statSync(filePath);
+          if (now - stat.mtimeMs > 120000 &&
+              (!recoverExisting || now - stat.mtimeMs > STARTUP_ACTIVE_MAX_AGE_MS ||
+                !isLikelyActiveRollout(filePath, stat))) {
+            continue;
+          }
         } catch { continue; }
       }
       pollFile(filePath, file, recoverExisting);
@@ -313,11 +387,15 @@ function scheduleRecoveryDrain() {
   )) return;
   recoveryDrainImmediate = setImmediate(() => {
     recoveryDrainImmediate = null;
+    let madeProgress = false;
     for (const [filePath, entry] of tracked) {
       if (!entry.recovering) continue;
+      const previousOffset = entry.offset;
       pollFile(filePath, path.basename(filePath), false);
+      const current = tracked.get(filePath);
+      if (current && current.offset > previousOffset) madeProgress = true;
     }
-    scheduleRecoveryDrain();
+    if (madeProgress) scheduleRecoveryDrain();
   });
 }
 

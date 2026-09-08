@@ -11,6 +11,8 @@ const IN_FLIGHT_HEARTBEAT_MS = 30000;
 const MAX_IN_FLIGHT_STALE_MS = 6 * 60 * 60 * 1000;
 const FULL_DIRECTORY_SCAN_MS = 60000;
 const DEFAULT_MAX_READ_BYTES_PER_POLL = 256 * 1024;
+const STARTUP_ACTIVE_PROBE_BYTES = 256 * 1024;
+const STARTUP_ACTIVE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 class CodexLogMonitor {
   /**
@@ -64,9 +66,14 @@ class CodexLogMonitor {
 
   _poll(recoverExisting = false) {
     const now = Date.now();
-    const allDirs = this._getSessionDirs();
     const includeArchive = recoverExisting || now - this._lastFullDirectoryScan >= FULL_DIRECTORY_SCAN_MS;
-    const dirs = new Set(includeArchive ? allDirs : allDirs.slice(0, 1));
+    // Codex keeps resumed tasks in their original YYYY/MM/DD directory. Poll
+    // today's directory frequently, but discover the complete archive only
+    // once per minute so old resumed tasks remain responsive without adding
+    // filesystem work to every 1.5s tick.
+    const currentDir = this._getCurrentSessionDir();
+    const dirs = new Set(includeArchive ? this._getAllSessionDirs() : [currentDir]);
+    dirs.add(currentDir);
     if (includeArchive) this._lastFullDirectoryScan = now;
     for (const filePath of this._tracked.keys()) dirs.add(path.dirname(filePath));
     for (const dir of dirs) {
@@ -82,8 +89,12 @@ class CodexLogMonitor {
         // Skip files we're not already tracking if they haven't been written recently
         if (!this._tracked.has(filePath)) {
           try {
-            const mtime = fs.statSync(filePath).mtimeMs;
-            if (now - mtime > 120000) continue; // older than 2 min — completed session, skip
+            const stat = fs.statSync(filePath);
+            if (now - stat.mtimeMs > 120000 &&
+                (!recoverExisting || now - stat.mtimeMs > STARTUP_ACTIVE_MAX_AGE_MS ||
+                  !this._isLikelyActiveRollout(filePath, stat))) {
+              continue;
+            }
           } catch { continue; }
         }
         this._pollFile(filePath, file, recoverExisting);
@@ -104,27 +115,101 @@ class CodexLogMonitor {
     // Electron main thread responsive without replaying minutes of old states.
     this._recoveryDrainImmediate = setImmediate(() => {
       this._recoveryDrainImmediate = null;
+      let madeProgress = false;
       for (const [filePath, tracked] of this._tracked) {
         if (!tracked.recovering) continue;
+        const previousOffset = tracked.offset;
         this._pollFile(filePath, path.basename(filePath), false);
+        const current = this._tracked.get(filePath);
+        if (current && current.offset > previousOffset) madeProgress = true;
       }
-      this._scheduleRecoveryDrain();
+      // A rollout can disappear or become temporarily unreadable while Codex
+      // rotates files. In that case, let the normal poll interval retry it
+      // instead of spinning setImmediate forever on the Electron main thread.
+      if (madeProgress) this._scheduleRecoveryDrain();
     });
   }
 
-  // Scan recent directories (supports codex resume of older sessions)
-  _getSessionDirs() {
+  _getCurrentSessionDir(now = new Date()) {
+    return path.join(
+      this._baseDir,
+      String(now.getFullYear()),
+      String(now.getMonth() + 1).padStart(2, "0"),
+      String(now.getDate()).padStart(2, "0")
+    );
+  }
+
+  // Enumerate actual date directories instead of guessing a bounded lookback.
+  // Only YYYY/MM/DD directories are accepted, so unrelated archive contents
+  // never become log scan targets.
+  _getAllSessionDirs() {
     const dirs = [];
-    const now = new Date();
-    for (let daysAgo = 0; daysAgo <= 30; daysAgo++) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - daysAgo);
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, "0");
-      const dd = String(d.getDate()).padStart(2, "0");
-      dirs.push(path.join(this._baseDir, String(yyyy), mm, dd));
+    let years;
+    try {
+      years = fs.readdirSync(this._baseDir, { withFileTypes: true });
+    } catch {
+      return dirs;
     }
-    return dirs;
+    for (const year of years) {
+      if (!year.isDirectory() || !/^\d{4}$/.test(year.name)) continue;
+      const yearDir = path.join(this._baseDir, year.name);
+      let months;
+      try { months = fs.readdirSync(yearDir, { withFileTypes: true }); } catch { continue; }
+      for (const month of months) {
+        if (!month.isDirectory() || !/^(0[1-9]|1[0-2])$/.test(month.name)) continue;
+        const monthDir = path.join(yearDir, month.name);
+        let days;
+        try { days = fs.readdirSync(monthDir, { withFileTypes: true }); } catch { continue; }
+        for (const day of days) {
+          if (!day.isDirectory() || !/^(0[1-9]|[12]\d|3[01])$/.test(day.name)) continue;
+          const date = new Date(Number(year.name), Number(month.name) - 1, Number(day.name));
+          if (
+            date.getFullYear() !== Number(year.name) ||
+            date.getMonth() + 1 !== Number(month.name) ||
+            date.getDate() !== Number(day.name)
+          ) continue;
+          dirs.push(path.join(monthDir, day.name));
+        }
+      }
+    }
+    return dirs.sort().reverse();
+  }
+
+  _isLikelyActiveRollout(filePath, stat) {
+    if (!stat || !stat.isFile() || stat.size <= 0) return false;
+    const readLength = Math.min(stat.size, STARTUP_ACTIVE_PROBE_BYTES);
+    const start = stat.size - readLength;
+    let fd;
+    let text;
+    try {
+      fd = fs.openSync(filePath, "r");
+      const buffer = Buffer.alloc(readLength);
+      const bytesRead = fs.readSync(fd, buffer, 0, readLength, start);
+      text = buffer.subarray(0, bytesRead).toString("utf8");
+    } catch {
+      return false;
+    } finally {
+      if (fd !== undefined) {
+        try { fs.closeSync(fd); } catch {}
+      }
+    }
+    if (start > 0) {
+      const firstNewline = text.indexOf("\n");
+      text = firstNewline >= 0 ? text.slice(firstNewline + 1) : "";
+    }
+    const lines = text.split("\n");
+    for (let index = lines.length - 1; index >= 0; index--) {
+      let record;
+      try { record = JSON.parse(lines[index]); } catch { continue; }
+      if (!record || typeof record !== "object" || Array.isArray(record)) continue;
+      const payload = record.payload;
+      const subtype = payload && typeof payload === "object" ? payload.type || "" : "";
+      const key = subtype ? `${record.type}:${subtype}` : record.type;
+      const mapped = this._config.logEventMap[key];
+      if (mapped === undefined || mapped === null) continue;
+      return mapped !== "codex-turn-end" && key !== "event_msg:turn_aborted";
+    }
+    return false;
   }
 
   _pollFile(filePath, fileName, recoverExisting = false) {
@@ -276,6 +361,7 @@ class CodexLogMonitor {
     } catch {
       return; // corrupted line, skip
     }
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return;
     if (this._onRecord) {
       try {
         this._onRecord(obj, {
@@ -367,7 +453,10 @@ class CodexLogMonitor {
       sourcePid: null,
       agentPid: null,
       heartbeat: true,
-      occurredAtMs: now,
+      // Heartbeats refresh liveness only. Reusing the latest source timestamp
+      // prevents a local clock value from outranking a completion record that
+      // Codex flushes to JSONL a moment later.
+      occurredAtMs: tracked.lastEventOccurredAtMs,
     });
   }
 

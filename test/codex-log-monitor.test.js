@@ -375,9 +375,13 @@ describe("CodexLogMonitor", () => {
     monitor.start();
   });
 
-  it("should skip old files (>2min mtime)", (_, done) => {
+  it("should skip old completed files (>2min mtime)", (_, done) => {
     const testFile = path.join(dateDir, TEST_FILENAME);
-    fs.writeFileSync(testFile, '{"type":"session_meta","payload":{"cwd":"/tmp"}}\n');
+    fs.writeFileSync(testFile, [
+      '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
+      '{"type":"event_msg","payload":{"type":"task_complete"}}',
+    ].join("\n") + "\n");
     // Backdate mtime to 10 minutes ago
     const oldTime = new Date(Date.now() - 600000);
     fs.utimesSync(testFile, oldTime, oldTime);
@@ -393,11 +397,31 @@ describe("CodexLogMonitor", () => {
     }, 300);
   });
 
-  it("should detect a recently updated rollout file from a resumed session older than 7 calendar days", (_, done) => {
+  it("recovers an active rollout that was quiet for more than two minutes at startup", (_, done) => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    fs.writeFileSync(testFile, [
+      '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
+      '{"type":"response_item","payload":{"type":"function_call","name":"shell_command"}}',
+    ].join("\n") + "\n");
+    const quietTime = new Date(Date.now() - 3 * 60 * 1000);
+    fs.utimesSync(testFile, quietTime, quietTime);
+
+    const config = makeConfig(tmpDir);
+    config.logConfig.recoverExistingFiles = true;
+    monitor = new CodexLogMonitor(config, (_sid, state, _event, extra) => {
+      assert.strictEqual(state, "working");
+      assert.strictEqual(extra.recovered, true);
+      done();
+    });
+    monitor.start();
+  });
+
+  it("should detect a recently updated rollout file from a resumed session older than 30 calendar days", (_, done) => {
     const config = makeConfig(tmpDir);
     const now = new Date();
     const resumed = new Date(now);
-    resumed.setDate(resumed.getDate() - 8);
+    resumed.setDate(resumed.getDate() - 45);
     const yyyy = resumed.getFullYear();
     const mm = String(resumed.getMonth() + 1).padStart(2, "0");
     const dd = String(resumed.getDate()).padStart(2, "0");
@@ -431,6 +455,24 @@ describe("CodexLogMonitor", () => {
     const config = makeConfig(tmpDir);
     monitor = new CodexLogMonitor(config, (sid, state) => {
       // Should skip corrupted line and publish the final valid state.
+      assert.strictEqual(state, "thinking");
+      done();
+    });
+    monitor.start();
+  });
+
+  it("skips valid JSON primitives without interrupting later records", (_, done) => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    fs.writeFileSync(testFile, [
+      "null",
+      "42",
+      '"text"',
+      "[]",
+      '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
+    ].join("\n") + "\n");
+
+    monitor = new CodexLogMonitor(makeConfig(tmpDir), (_sid, state) => {
       assert.strictEqual(state, "thinking");
       done();
     });
@@ -543,6 +585,57 @@ describe("CodexLogMonitor", () => {
     monitor._cleanStaleFiles();
     assert.equal(monitor._tracked.has("/tmp/in-flight.jsonl"), true);
     assert.deepStrictEqual(states, [{ state: "working", event: "codex-heartbeat" }]);
+  });
+
+  it("keeps the source event timestamp when refreshing an in-flight turn", () => {
+    const config = makeConfig(tmpDir);
+    const updates = [];
+    monitor = new CodexLogMonitor(config, (_sid, state, event, extra) => {
+      updates.push({ state, event, occurredAtMs: extra.occurredAtMs });
+    });
+    const sourceEventAt = Date.now() - 60000;
+    monitor._tracked.set("/tmp/in-flight-source-time.jsonl", {
+      sessionId: EXPECTED_SID,
+      cwd: "/tmp",
+      lastEventTime: Date.now() - 301000,
+      lastState: "thinking",
+      lastEventOccurredAtMs: sourceEventAt,
+      turnInFlight: true,
+      inFlightStartedAt: Date.now() - 301000,
+      lastHeartbeatAt: 0,
+      reported: true,
+      isSubagent: false,
+    });
+
+    monitor._cleanStaleFiles();
+
+    assert.deepStrictEqual(updates, [{
+      state: "thinking",
+      event: "codex-heartbeat",
+      occurredAtMs: sourceEventAt,
+    }]);
+  });
+
+  it("stops immediate recovery draining when a rollout makes no progress", (_, done) => {
+    const missingFile = path.join(dateDir, TEST_FILENAME);
+    monitor = new CodexLogMonitor(makeConfig(tmpDir), () => {});
+    monitor._tracked.set(missingFile, {
+      offset: 0,
+      recovering: true,
+      recoveryTargetOffset: 1024,
+    });
+    let attempts = 0;
+    const originalPollFile = monitor._pollFile.bind(monitor);
+    monitor._pollFile = (...args) => {
+      attempts++;
+      return originalPollFile(...args);
+    };
+
+    monitor._scheduleRecoveryDrain();
+    setTimeout(() => {
+      assert.strictEqual(attempts, 1);
+      done();
+    }, 30);
   });
 
   it("should extract shell command from function_call arguments JSON", () => {

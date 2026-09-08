@@ -151,10 +151,26 @@ describe("Codex quota data source", () => {
       "{partial",
     ].join("\n"));
 
-    const quota = findLatestQuota({ sessionDir: tmpDir });
+    const quota = findLatestQuota({ sessionDir: tmpDir, now: new Date(2026, 7, 7) });
 
     assert.strictEqual(quota.remainingPercent, 56);
     assert.strictEqual(quota.sourceFile, newerFile);
+  });
+
+  it("finds quota in an existing session directory outside the default lookback", async () => {
+    const historicalDir = path.join(tmpDir, "2025", "01", "02");
+    fs.mkdirSync(historicalDir, { recursive: true });
+    const historicalFile = path.join(historicalDir, "rollout-historical.jsonl");
+    fs.writeFileSync(historicalFile, JSON.stringify(makeTokenCount({
+      timestamp: "2026-08-06T12:00:00.000Z",
+      primary: quotaWindow(37, 10080, 1786172497),
+    })) + "\n");
+
+    const syncQuota = findLatestQuota({ sessionDir: tmpDir });
+    const asyncQuota = await findLatestQuotaAsync({ sessionDir: tmpDir });
+
+    assert.strictEqual(syncQuota.remainingPercent, 63);
+    assert.strictEqual(asyncQuota.remainingPercent, 63);
   });
 
   it("falls back to an older file when the newest log has no usable quota", () => {
@@ -167,7 +183,7 @@ describe("Codex quota data source", () => {
     const future = new Date(Date.now() + 5000);
     fs.utimesSync(corruptFile, future, future);
 
-    const quota = findLatestQuota({ sessionDir: tmpDir });
+    const quota = findLatestQuota({ sessionDir: tmpDir, now: new Date(2026, 7, 7) });
 
     assert.strictEqual(quota.usedPercent, 12);
     assert.strictEqual(quota.sourceFile, validFile);
@@ -186,8 +202,9 @@ describe("Codex quota data source", () => {
       primary: quotaWindow(0, 10080, 1787652314),
     })) + "\n");
 
-    const syncQuota = findLatestQuota({ sessionDir: tmpDir });
-    const asyncQuota = await findLatestQuotaAsync({ sessionDir: tmpDir });
+    const now = new Date(2026, 7, 7);
+    const syncQuota = findLatestQuota({ sessionDir: tmpDir, now });
+    const asyncQuota = await findLatestQuotaAsync({ sessionDir: tmpDir, now });
 
     assert.strictEqual(syncQuota.limitId, "codex");
     assert.strictEqual(syncQuota.remainingPercent, 38);
@@ -279,6 +296,7 @@ describe("Codex quota data source", () => {
     const updates = [];
     const source = new CodexQuotaSource({
       sessionDir: tmpDir,
+      now: new Date(2026, 7, 7),
       pollIntervalMs: 60000,
       onUpdate: (quota) => updates.push(quota),
     });
@@ -309,6 +327,30 @@ describe("Codex quota data source", () => {
     await source.pollAsync();
     assert.strictEqual(source.getSnapshot().remainingPercent, 70);
     assert.strictEqual(updates.length, 1);
+  });
+
+  it("does not let a slow archive scan overwrite a newer live quota", async () => {
+    let releaseScan;
+    const scan = new Promise((resolve) => { releaseScan = resolve; });
+    const updates = [];
+    const source = new CodexQuotaSource({
+      findLatestQuotaAsync: () => scan,
+      onUpdate: (quota) => updates.push(quota.observedAtMs),
+    });
+    const pendingPoll = source.pollAsync();
+    source.ingestObject(makeTokenCount({
+      timestamp: "2026-08-06T10:05:00.000Z",
+      primary: quotaWindow(41, 10080, 1786172497),
+    }));
+    releaseScan(parseQuotaObject(makeTokenCount({
+      timestamp: "2026-08-06T10:00:00.000Z",
+      primary: quotaWindow(40, 10080, 1786172497),
+    })));
+
+    await pendingPoll;
+
+    assert.deepStrictEqual(updates, [Date.parse("2026-08-06T10:05:00.000Z")]);
+    assert.strictEqual(source.getSnapshot().remainingPercent, 59);
   });
 
   it("finds quota through the asynchronous file scanner", async () => {
